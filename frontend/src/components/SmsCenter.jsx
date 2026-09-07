@@ -1,4 +1,14 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  fetchUsers,
+  mapBackendUser,
+  getSmsConfig,
+  updateSmsConfig,
+  sendSms,
+  fetchSmsLogs,
+  mapSmsLog,
+  sendSos,
+} from "../api";
 import {
   AlertTriangle,
   Bell,
@@ -10,6 +20,7 @@ import {
   Phone,
   Radio,
   RefreshCw,
+  Save,
   Search,
   Send,
   Settings2,
@@ -140,7 +151,7 @@ const INITIAL_LOGS = [
    COMPONENT
    ========================================================= */
 
-const SmsCenter = ({ currentUser }) => {
+const SmsCenter = ({ currentUser, onNotification }) => {
   const [recipients, setRecipients] = useState(
     INITIAL_RECIPIENTS
   );
@@ -148,6 +159,86 @@ const SmsCenter = ({ currentUser }) => {
   const [logs, setLogs] = useState(
     INITIAL_LOGS
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchUsers()
+      .then((data) => {
+        if (cancelled) return;
+        const mapped = (data || []).map((u) => {
+          const user = mapBackendUser(u);
+          return {
+            id: user.id,
+            uid: user.id,
+            name: user.username,
+            phone: user.phone || "+91 0000000000",
+            role: user.role,
+            location: user.locationName || "Unknown Sector",
+            enabled: user.smsAlertsEnabled && user.isActive,
+          };
+        });
+        if (mapped.length > 0) {
+          setRecipients(mapped);
+        }
+      })
+      .catch((error) => {
+        console.warn("Could not load recipients from backend, using sample data:", error);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  //load SMS config from backend
+  useEffect(() => {
+    let cancelled = false;
+    getSmsConfig()
+      .then((config) => {
+        if (cancelled) return;
+        setSmsConfig((current) => ({
+          ...current,
+          autoAlertEnabled: config.auto_alert_enabled,
+          alertLevels: config.alert_levels || current.alertLevels,
+          selectedSpecies: (config.selected_species || []).map((s) => capitalize(s)),
+          defaultSenderName: config.default_sender_name,
+          twilioConfigured: config.twilio_configured,
+        }));
+      })
+      .catch((error) => {
+        console.warn("Could not load SMS config, using defaults:", error);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  //load SMS logs from backend
+  useEffect(() => {
+    let cancelled = false;
+    fetchSmsLogs({ limit: 100 })
+      .then((records) => {
+        if (cancelled) return;
+        const mapped = (records || []).map(mapSmsLog);
+        if (mapped.length > 0) {
+          setLogs(mapped);
+        }
+      })
+      .catch((error) => {
+        console.warn("Could not load SMS logs from backend, using sample:", error);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const saveSmsConfig = async () => {
+    try {
+      await updateSmsConfig({
+        auto_alert_enabled: smsConfig.autoAlertEnabled,
+        alert_levels: smsConfig.alertLevels,
+        selected_species: smsConfig.selectedSpecies.map((s) => s.toLowerCase()),
+        default_sender_name: smsConfig.defaultSenderName,
+        twilio_configured: smsConfig.twilioConfigured,
+      });
+      if (onNotification) onNotification({ title: "SMS Settings Saved", message: "SMS configuration updated on the backend.", type: "sms" }, false);
+    } catch (error) {
+      console.error("Failed to save SMS config:", error);
+    }
+  };
 
   const [activeSection, setActiveSection] =
     useState("compose");
@@ -415,7 +506,7 @@ const SmsCenter = ({ currentUser }) => {
      SEND SMS
      ======================================================= */
 
-  const sendSms = () => {
+  const sendSms = async () => {
     if (
       selectedRecipients.length ===
       0
@@ -435,54 +526,33 @@ const SmsCenter = ({ currentUser }) => {
 
     setSending(true);
 
-    setTimeout(() => {
-      const selectedUsers =
-        recipients.filter(
-          (recipient) =>
-            selectedRecipients.includes(
-              recipient.id
-            )
-        );
+    try {
+      const mappedRecipients = recipients
+        .filter((recipient) => selectedRecipients.includes(recipient.id))
+        .map((r) => Number(r.id));
+      const created = await sendSms({
+        recipient_ids: mappedRecipients,
+        message: message.trim(),
+        trigger_type: triggerType,
+      });
+      const newLogs = (created || []).map(mapSmsLog);
+      setLogs((current) => [...newLogs, ...current]);
+    } catch (error) {
+      console.error("Failed to send SMS:", error);
+      alert("Failed to send SMS. Please try again.");
+    }
 
-      const newLogs =
-        selectedUsers.map(
-          (recipient, index) => ({
-            id: `SMS-${Date.now()}-${index}`,
-            timestamp: new Date(),
-            recipientPhone:
-              recipient.phone,
-            recipientName:
-              recipient.name,
-            recipientRole:
-              recipient.role,
-            message:
-              message.trim(),
-            status:
-              smsConfig.twilioConfigured
-                ? "sent"
-                : "simulated",
-            triggerType:
-              triggerType,
-          })
-        );
+    setMessage("");
 
-      setLogs((current) => [
-        ...newLogs,
-        ...current,
-      ]);
+    setSelectedRecipients(
+      []
+    );
 
-      setMessage("");
+    setSending(false);
 
-      setSelectedRecipients(
-        []
-      );
-
-      setSending(false);
-
-      setActiveSection(
-        "history"
-      );
-    }, 800);
+    setActiveSection(
+      "history"
+    );
   };
 
 
@@ -490,23 +560,34 @@ const SmsCenter = ({ currentUser }) => {
      EMERGENCY SOS
      ======================================================= */
 
-  const sendEmergencySOS =
-    () => {
-      const emergencyMessage =
-        `WILDGUARD EMERGENCY SOS: Immediate wildlife/security assistance required. Alert generated by ${currentUser?.username || "WildGuard Operator"}.`;
+  const sendEmergencySOS = () => {
+    const emergencyMessage =
+      `WILDGUARD EMERGENCY SOS: Immediate wildlife/security assistance required. Alert generated by ${currentUser?.username || "WildGuard Operator"}.`;
 
-      setMessage(
-        emergencyMessage
-      );
+    // Fire the backend SOS broadcast immediately
+    sendSos({
+      message: emergencyMessage,
+      location: currentUser?.locationName || "",
+    })
+      .then(() => {
+        if (onNotification) onNotification({ title: "Emergency SOS Sent", message: "Emergency broadcast dispatched to all stakeholders.", type: "threat" }, false);
+      })
+      .catch((error) => {
+        console.error("Failed to send SOS:", error);
+      });
 
-      setTriggerType(
-        "emergency_sos"
-      );
+    setMessage(
+      emergencyMessage
+    );
 
-      setActiveSection(
-        "compose"
-      );
-    };
+    setTriggerType(
+      "emergency_sos"
+    );
+
+    setActiveSection(
+      "compose"
+    );
+  };
 
 
   /* =======================================================
@@ -1349,24 +1430,35 @@ const SmsCenter = ({ currentUser }) => {
         "settings" && (
         <section className="rounded-xl border border-slate-800 bg-slate-950/60">
 
-          <div className="border-b border-slate-800 p-4">
+          <div className="flex items-center justify-between border-b border-slate-800 p-4">
 
-            <h2 className="flex items-center gap-2 text-xs font-bold text-slate-200">
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-bold text-slate-200">
 
-              <Settings2
-                size={14}
-                className="text-emerald-400"
-              />
+                <Settings2
+                  size={14}
+                  className="text-emerald-400"
+                />
 
-              SMS Configuration
+                SMS Configuration
 
-            </h2>
+              </h2>
 
-            <p className="mt-1 text-[9px] text-slate-600">
-              Configure automatic alert
-              notifications and gateway
-              settings.
-            </p>
+              <p className="mt-1 text-[9px] text-slate-600">
+                Configure automatic alert
+                notifications and gateway
+                settings.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveSmsConfig}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-bold text-emerald-400 transition hover:bg-emerald-500/20"
+            >
+              <Save size={13} />
+              Save Settings
+            </button>
 
           </div>
 
@@ -1820,5 +1912,12 @@ const Toggle = ({
   );
 };
 
+const capitalize = (value) => {
+  if (!value) return value;
+  return value
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
 
 export default SmsCenter;

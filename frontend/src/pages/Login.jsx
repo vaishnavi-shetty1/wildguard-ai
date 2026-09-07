@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {ArrowRight,Eye,EyeOff,AlertCircle,CheckCircle2} from "lucide-react";
 import AuthLayout from "../components/AuthLayout";
+import { loginUser } from "../api";
 
 const inputClass = "w-full rounded-[12px] border border-[#94aaa133] bg-white/3 px-3.5 py-3 text-sm text-[#f3f7f5] outline-none placeholder:text-[#cadcd67a] focus:border-[#7aebb0bf] focus:bg-white/5 focus:ring-4 focus:ring-[#4abf7f1f]";
 
@@ -47,111 +48,24 @@ const Login = () => {
     }
     setIsLoading(true);
     try {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 500)
-      );
+      const response = await loginUser({ email, password });
 
-      /*
-       * Demo users.
-       *
-       * Replace with your backend authentication API
-       * when the backend is connected.
-       */
-      const defaultUsers = [
-        {
-          id: "1",
-          username: "Administrator",
-          email: "admin@wildguard.ai",
-          password: "admin123",
-          role: "admin",
-          phone: "",
-          locationName: "WildGuard Control Center",
-          smsAlertsEnabled: true,
-          isActive: true,
-        },
-        {
-          id: "2",
-          username: "Forest Operator",
-          email: "operator@wildguard.ai",
-          password: "operator123",
-          role: "operator",
-          phone: "",
-          locationName: "Forest Operations Zone",
-          smsAlertsEnabled: true,
-          isActive: true,
-        },
-        {
-          id: "3",
-          username: "Land Owner",
-          email: "landowner@wildguard.ai",
-          password: "landowner123",
-          role: "landowner",
-          phone: "",
-          locationName: "Sector B3 - Green Valley Orchards",
-          smsAlertsEnabled: true,
-          isActive: true,
-        },
-        {
-          id: "4",
-          username: "Village Head",
-          email: "villagehead@wildguard.ai",
-          password: "villagehead123",
-          role: "village_head",
-          phone: "",
-          locationName: "Sector A4 - Silverwood Hamlet",
-          smsAlertsEnabled: true,
-          isActive: true,
-        },
-      ];
-
-      //users through register
-      const registeredUsers = JSON.parse( localStorage.getItem( "wildguard_users") || "[]");
-      const registeredCredentials = JSON.parse(localStorage.getItem("wildguard_demo_credentials") || "[]");
-
-      /*
-       * Combine demo users with registered users.
-       */
-
-      const users = [
-        ...defaultUsers,
-        ...registeredUsers.map((user) => {
-          const credentials = registeredCredentials.find((item) => item.userId === user.id);
-          return {
-            ...user,
-            password: credentials?.password || ""
-          };
-        }),
-      ];
-      const user = users.find((item) => item.email === email && item.password === password);
-
-      if (!user) {
-        setError("Invalid email or password.");
-        return;
-      }
-      if (!user.isActive) {
-        setError("Your account is currently inactive. Please contact the administrator.");
-        return;
-      }
-
-      /*
-       * Never store the password in the
-       * authenticated user object.
-       */
+      const backendUser = response.user;
 
       const authenticatedUser = {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        phone: user.phone,
-        locationName: user.locationName,
-        smsAlertsEnabled: user.smsAlertsEnabled,
-        createdAt: user.createdAt || new Date().toISOString(),
-        isActive: user.isActive,
+        id: String(backendUser.id),
+        username: backendUser.username,
+        email: backendUser.email,
+        role: backendUser.role,
+        phone: backendUser.phone || "",
+        locationName: backendUser.location_name || "",
+        smsAlertsEnabled: backendUser.sms_alerts_enabled,
+        createdAt: backendUser.created_at || new Date().toISOString(),
+        isActive: backendUser.is_active,
       };
 
       localStorage.setItem("wildguard_user", JSON.stringify(authenticatedUser));
-      localStorage.setItem("wildguard_token",`wildguard-${user.id}-${Date.now()}`);
+      localStorage.setItem("wildguard_token", response.access_token);
 
       if (formData.rememberMe) {
         localStorage.setItem("wildguard_remember","true");
@@ -162,7 +76,7 @@ const Login = () => {
       }, 500);
     } catch (loginError) {
       console.error(loginError);
-      setError( "Unable to sign in. Please try again.");
+      setError(loginError.message || "Unable to sign in. Please try again.");
     } finally {
       setIsLoading(false);
     }

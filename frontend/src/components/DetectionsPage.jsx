@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   MapPin,
   ShieldAlert,
 } from "lucide-react";
+import { fetchDetections, mapBackendDetection } from "../api";
 
 const sampleDetections = [
   {
@@ -90,10 +91,42 @@ const DetectionsPAge = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const detections =
+  const [backendDetections, setBackendDetections] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDetections({ limit: 200 })
+      .then((records) => {
+        if (cancelled) return;
+        setBackendDetections((records || []).map(mapBackendDetection));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const drafts =
     location.state?.detections?.length > 0
       ? location.state.detections
-      : sampleDetections;
+      : [];
+
+  const detections =
+    backendDetections.length > 0
+      ? [...backendDetections, ...drafts]
+      : drafts.length > 0
+        ? drafts
+        : isLoading
+          ? []
+          : sampleDetections;
 
   return (
     <div className="min-h-screen bg-[#061418] text-slate-100">
@@ -137,6 +170,12 @@ const DetectionsPAge = () => {
           </div>
 
         </div>
+
+        {loadError && (
+          <div className="border-t border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[11px] text-amber-300">
+            Backend unavailable — showing last known data. ({loadError})
+          </div>
+        )}
       </header>
 
       {/* CONTENT */}

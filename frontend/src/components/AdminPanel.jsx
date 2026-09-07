@@ -1,63 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {Activity,AlertTriangle,CheckCircle2,Edit3,Lock,MessageSquare,Plus,Search,Shield,Trash2,UserCheck,UserCog,UserX,Users,X,} from "lucide-react";
-
-const initialUsers = [
-  {
-    id: "USR-001",
-    username: "admin",
-    email: "admin@wildguard.org",
-    role: "admin",
-    phone: "+91 9876543210",
-    locationName: "National Reserve Network",
-    smsAlertsEnabled: true,
-    createdAt: "2026-07-01",
-    isActive: true,
-  },
-  {
-    id: "USR-002",
-    username: "ranger01",
-    email: "ranger@wildguard.org",
-    role: "operator",
-    phone: "+91 9876543211",
-    locationName: "Sector B3 - Green Valley",
-    smsAlertsEnabled: true,
-    createdAt: "2026-07-05",
-    isActive: true,
-  },
-  {
-    id: "USR-003",
-    username: "landowner01",
-    email: "farmer@wildguard.org",
-    role: "landowner",
-    phone: "+91 9876543212",
-    locationName: "Sector B3 - Green Valley Orchards",
-    smsAlertsEnabled: true,
-    createdAt: "2026-07-12",
-    isActive: true,
-  },
-  {
-    id: "USR-004",
-    username: "villagehead01",
-    email: "villagehead@wildguard.org",
-    role: "village_head",
-    phone: "+91 9876543213",
-    locationName: "Sector A4 - Silverwood Hamlet",
-    smsAlertsEnabled: true,
-    createdAt: "2026-07-18",
-    isActive: true,
-  },
-  {
-    id: "USR-005",
-    username: "operator02",
-    email: "operator2@wildguard.org",
-    role: "operator",
-    phone: "+91 9876543214",
-    locationName: "Sector C2",
-    smsAlertsEnabled: false,
-    createdAt: "2026-07-25",
-    isActive: false,
-  },
-];
+import { fetchUsers, updateUser, createUser, deleteUser as apiDeleteUser, mapBackendUser, fetchSystemLogs, mapSystemLog } from "../api";
 
 const initialLogs = [
   {
@@ -98,14 +41,54 @@ const initialLogs = [
   },
 ];
 
-const AdminPanel = () => {
-  const [users, setUsers] = useState(initialUsers);
-  const [logs] = useState(initialLogs);
+const AdminPanel = ({ onNotification }) => {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState(initialLogs);
   const [activeSection, setActiveSection] = useState("users");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchUsers()
+      .then((data) => {
+        if (cancelled) return;
+        setUsers((data || []).map(mapBackendUser));
+      })
+      .catch((error) => {
+        console.error("Failed to load users:", error);
+        if (onNotification) {
+          onNotification({
+            title: "Users Load Failed",
+            message: "Could not fetch users from the backend.",
+            type: "system",
+          }, false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [onNotification]);
+
+  //load system activity logs from backend
+  useEffect(() => {
+    let cancelled = false;
+    fetchSystemLogs(200)
+      .then((records) => {
+        if (cancelled) return;
+        if (records && records.length > 0) {
+          setLogs(records.map(mapSystemLog));
+        }
+      })
+      .catch((error) => {
+        console.warn("Could not load system logs from backend:", error);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const [smsConfig, setSmsConfig] = useState({
     autoAlertEnabled: true,
@@ -120,6 +103,7 @@ const AdminPanel = () => {
   const [formData, setFormData] = useState({
     username: "",
     email: "",
+    password: "",
     role: "operator",
     phone: "",
     locationName: "",
@@ -149,6 +133,7 @@ const AdminPanel = () => {
     setFormData({
       username: "",
       email: "",
+      password: "",
       role: "operator",
       phone: "",
       locationName: "",
@@ -167,6 +152,7 @@ const AdminPanel = () => {
     setFormData({
       username: user.username,
       email: user.email,
+      password: "",
       role: user.role,
       phone: user.phone || "",
       locationName: user.locationName || "",
@@ -175,40 +161,72 @@ const AdminPanel = () => {
     setShowModal(true);
   };
 
-  const saveUser = (event) => {
+  const saveUser = async (event) => {
     event.preventDefault();
     if (!formData.username || !formData.email) return;
-    if (editingUser) {
-      setUsers((current) => current.map((user) => user.id === editingUser.id ? { ...user, ...formData, } : user ) );
-    } else {
-      const newUser = {
-        id: `USR-${String(users.length + 1).padStart(3, "0")}`,
-        ...formData,
-        createdAt: new Date().toISOString().split("T")[0],
-        isActive: true,
-      };
-      setUsers((current) => [...current, newUser]);
+
+    try {
+      if (editingUser) {
+        const payload = {
+          username: formData.username,
+          email: formData.email,
+          role: formData.role,
+          phone: formData.phone || "",
+          location_name: formData.locationName || "",
+          sms_alerts_enabled: formData.smsAlertsEnabled,
+        };
+        if (formData.password) payload.password = formData.password;
+        const updated = await updateUser(editingUser.uid ?? editingUser.id, payload);
+        setUsers((current) =>
+          current.map((user) => (String(user.id) === String(editingUser.id) ? mapBackendUser(updated) : user))
+        );
+        if (onNotification) onNotification({ title: "User Updated", message: `${formData.username} was updated.`, type: "system" }, false);
+      } else {
+        const payload = {
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          phone: formData.phone || "",
+          location_name: formData.locationName || "",
+          sms_alerts_enabled: formData.smsAlertsEnabled,
+        };
+        const created = await createUser(payload);
+        setUsers((current) => [mapBackendUser(created), ...current]);
+        if (onNotification) onNotification({ title: "User Created", message: `${formData.username} was created.`, type: "system" }, false);
+      }
+    } catch (error) {
+      console.error("Failed to save user:", error);
     }
     setShowModal(false);
     resetForm();
   };
 
-  const toggleUserStatus = (id) => {
-    setUsers((current) =>
-      current.map((user) => user.id === id ? { ...user, isActive: !user.isActive, } : user )
-    );
+  const toggleUserStatus = async (user) => {
+    const nextActive = !user.isActive;
+    try {
+      const updated = await updateUser(user.uid ?? user.id, { is_active: nextActive });
+      setUsers((current) =>
+        current.map((u) => (String(u.id) === String(user.id) ? mapBackendUser(updated) : u))
+      );
+    } catch (error) {
+      console.error("Failed to update user status:", error);
+    }
   };
 
-  const deleteUser = (id) => {
-    const user = users.find((item) => item.id === id);
+  const deleteUser = async (id) => {
+    const user = users.find((item) => String(item.id) === String(id));
     if (user?.role === "admin") {
       alert("The administrator account cannot be deleted.");
       return;
     }
     if (window.confirm("Are you sure you want to delete this user?")) {
-      setUsers((current) =>
-        current.filter((user) => user.id !== id)
-      );
+      try {
+        await apiDeleteUser(user.uid ?? id);
+        setUsers((current) => current.filter((u) => String(u.id) !== String(id)));
+      } catch (error) {
+        console.error("Failed to delete user:", error);
+      }
     }
   };
 
@@ -383,7 +401,7 @@ const AdminPanel = () => {
                             <Edit3 className="h-3.5 w-3.5" />
                           </button>
 
-                          <button type="button" onClick={() =>toggleUserStatus(user.id)} title={ user.isActive ? "Deactivate" : "Activate" }
+                          <button type="button" onClick={() =>toggleUserStatus(user)} title={ user.isActive ? "Deactivate" : "Activate" }
                             className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:text-yellow-400">
                             {user.isActive ? (
                               <UserX className="h-3.5 w-3.5" />
@@ -603,6 +621,8 @@ const AdminPanel = () => {
               <AdminInput label="Username" value={formData.username} onChange={(e) => setFormData((current) => ({ ...current, username: e.target.value, }))} placeholder="Enter username" required/>
 
               <AdminInput label="Email" type="email" value={formData.email} onChange={(e) => setFormData((current) => ({ ...current, email: e.target.value, }))} placeholder="user@wildguard.org" required/>
+
+              <AdminInput label={editingUser ? "Password (leave blank to keep)" : "Password"} type="password" value={formData.password} onChange={(e) => setFormData((current) => ({ ...current, password: e.target.value, }))} placeholder="Enter password" required={!editingUser}/>
 
               <div>
                 <label className="mb-2 block text-xs font-semibold text-slate-300">

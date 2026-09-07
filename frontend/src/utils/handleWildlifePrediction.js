@@ -1,8 +1,15 @@
 import {
   createWildlifePredictionNotification,
 } from "./wildlifePrediction";
+import { postDetection, getThreatLevel } from "../api";
 
-export const handleWildlifePrediction = ({
+const THREAT_TO_SPECIES = {
+  HIGH: "elephant",
+  MEDIUM: "tiger",
+  LOW: "unknown",
+};
+
+export const handleWildlifePrediction = async ({
   prediction,
   cameraState,
   setDetectionLogs,
@@ -12,69 +19,76 @@ export const handleWildlifePrediction = ({
     return;
   }
 
-  /*
-   * Create one ID so the detection log
-   * and notification refer to the same event.
-   */
-  const predictionId =
-    prediction.id ||
-    `${Date.now()}-${Math.random()}`;
-
   const timestamp =
     prediction.timestamp ||
     new Date().toISOString();
+
+  const predicateId = prediction.id || "";
+  const predictionId =
+    predicateId ||
+    `${Date.now()}-${Math.random()}`;
+
+  /*
+   * Normalize the prediction for the backend.
+   */
+  const species =
+    mapThreatToSpecies(
+      prediction.threatLevel
+    );
+
+  /*
+   * Try to persist to the backend.
+   *
+   * On success, use the real server response;
+   * otherwise keep the local prediction.
+   */
+  let resolvedId = predictionId;
+  let resolvedSpecies =
+    prediction.species || "Unknown Wildlife";
+  let confidence =
+    Number(prediction.confidence || 0);
+  let level =
+    prediction.threatLevel || getThreatLevel(species, confidence);
+
+  try {
+    const ack = await postDetection({
+      species,
+      confidence: Math.min(Math.max(confidence, 0), 1),
+      device_id:
+        prediction.deviceId ||
+        cameraState?.cameraName ||
+        "web-client",
+    });
+
+    resolvedId = ack.id;
+  } catch (error) {
+    console.warn(
+      "Backend unreachable — keeping local prediction:",
+      error.message
+    );
+  }
 
   /*
    * Create detection log
    */
   const detectionLog = {
-    id: predictionId,
-
-    animal:
-      prediction.species ||
-      "Unknown Wildlife",
-
-    species:
-      prediction.species ||
-      "Unknown Wildlife",
-
-    confidence:
-      `${Math.round(
-        Number(prediction.confidence || 0) * 100
-      )}%`,
-
-    confidenceValue:
-      Number(prediction.confidence || 0),
-
-    level:
-      prediction.threatLevel ||
-      "LOW",
-
-    threatLevel:
-      prediction.threatLevel ||
-      "LOW",
-
-    location:
-      prediction.location ||
-      "Unknown Location",
-
+    id: resolvedId,
+    animal: resolvedSpecies,
+    species: resolvedSpecies,
+    confidence: `${Math.round(confidence * 100)}%`,
+    confidenceValue: confidence,
+    level,
+    threatLevel: level,
+    location: prediction.location || "Web camera feed",
     cameraName:
       prediction.cameraName ||
       cameraState?.cameraName ||
       "AI Camera",
-
     timestamp,
-
-    date:
-      new Date(timestamp).toLocaleDateString(),
-
-    time:
-      new Date(timestamp).toLocaleTimeString(),
+    date: new Date(timestamp).toLocaleDateString(),
+    time: new Date(timestamp).toLocaleTimeString(),
   };
 
-  /*
-   * Add prediction to detection history.
-   */
   setDetectionLogs((current) =>
     [
       detectionLog,
@@ -88,16 +102,14 @@ export const handleWildlifePrediction = ({
   const notification =
     createWildlifePredictionNotification({
       ...prediction,
-      id: predictionId,
+      id: resolvedId,
       timestamp,
     });
 
-  /*
-   * This triggers:
-   *
-   * 1. Notification drawer
-   * 2. Notification toast
-   * 3. Notification sound
-   */
   addNotification(notification);
+};
+
+const mapThreatToSpecies = (threatLevel) => {
+  const key = (threatLevel || "LOW").toUpperCase();
+  return THREAT_TO_SPECIES[key] || "unknown";
 };

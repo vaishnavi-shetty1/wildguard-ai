@@ -3,7 +3,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import HomePage from "./pages/HomePage"; 
 import ProtectedRoute from "./components/ProtectedRoute";
-import DetectionsPage from "./components/DetectionsPAge";
+import DetectionsPage from "./components/DetectionsPage";
 
 function App(){
   return (

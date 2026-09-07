@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {ArrowRight,Eye,EyeOff,AlertCircle,CheckCircle2} from "lucide-react";
 import AuthLayout from "../components/AuthLayout";
+import { registerUser } from "../api";
 
 const inputClass = "w-full rounded-[12px] border border-[#94aaa133] bg-white/3 px-3.5 py-2.5 text-sm text-[#f3f7f5] outline-none placeholder:text-[#cadcd67a] focus:border-[#7aebb0bf] focus:bg-white/5 focus:ring-4 focus:ring-[#4abf7f1f]";
 
@@ -119,59 +120,17 @@ const Register = () => {
     }
     setIsLoading(true);
     try {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 700)
-      );
-      const existingUsers = JSON.parse(localStorage.getItem("wildguard_users") || "[]");
       const email = formData.email.trim().toLowerCase();
-      const exists = existingUsers.some((user) => user.email === email);
-      if (exists) {
-        setErrors({
-          email: "An account with this email already exists.",
-        });
-        return;
-      }
 
-      //create user
-      const newUser = {
-        id: `user-${Date.now()}`,
+      await registerUser({
         username: formData.fullName.trim(),
         email,
+        password: formData.password,
         role: formData.role,
         phone: formData.phone.trim(),
-        locationName: formData.locationName.trim(),
-        smsAlertsEnabled: formData.smsAlertsEnabled,
-        createdAt: new Date().toISOString(),
-        isActive: true,
-      };
-
-      //save user to local storage
-      localStorage.setItem("wildguard_users",JSON.stringify([ ...existingUsers, newUser, ]));
-
-      /*
-       * Demo authentication credentials.
-       * Replace this with backend authentication later.
-       */
-
-      const credentials =
-        JSON.parse(
-          localStorage.getItem(
-            "wildguard_demo_credentials"
-          ) || "[]"
-        );
-
-      credentials.push({
-        userId: newUser.id,
-        email,
-        password: formData.password,
+        location_name: formData.locationName.trim(),
+        sms_alerts_enabled: formData.smsAlertsEnabled,
       });
-
-      localStorage.setItem(
-        "wildguard_demo_credentials",
-        JSON.stringify(
-          credentials
-        )
-      );
 
       setSuccess(
         "Account created successfully!"
@@ -189,10 +148,14 @@ const Register = () => {
     } catch (error) {
       console.error(error);
 
-      setErrors({
-        form:
-          "Unable to create your account. Please try again.",
-      });
+      const message = error.message || "Unable to create your account. Please try again.";
+      if (message.toLowerCase().includes("email")) {
+        setErrors({ email: message });
+      } else if (message.toLowerCase().includes("role")) {
+        setErrors({ role: message });
+      } else {
+        setErrors({ form: message });
+      }
 
     } finally {
       setIsLoading(false);

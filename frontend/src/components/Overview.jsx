@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -16,9 +16,17 @@ import {
 } from "lucide-react";
 import DetectionLogs from "./DetectionLogs";
 import { useNavigate } from "react-router-dom";
+import { fetchStats } from "../api";
 
 const Overview = ({ currentUser, detectionLogs =[] }) => {
   const [showAllDetections, setShowAllDetections] = useState(false);
+  const [liveStats, setLiveStats] = useState(null);
+
+  useEffect(() => {
+    fetchStats()
+      .then((stats) => setLiveStats(stats))
+      .catch(() => setLiveStats(null));
+  }, []);
 
   //user information
 
@@ -75,37 +83,51 @@ const Overview = ({ currentUser, detectionLogs =[] }) => {
 
   //dashboard stats
 
+  const totalDetections = liveStats?.total_detections ?? null;
+  const threatCount =
+    liveStats && liveStats.by_species
+      ? Object.values(liveStats.by_species).reduce(
+          (sum, n) => sum + Number(n),
+          0
+        )
+      : null;
+
   const stats = useMemo(() => {
+    const detectionsValue =
+      totalDetections != null ? String(totalDetections) : "—";
+    const threatsValue =
+      threatCount != null ? String(threatCount) : "—";
+
     if (role === "admin") {
       return [
         {
           label: "Active Threats",
-          value: "08",
-          description: "Across protected zones",
+          value: threatsValue,
+          description: "Total stored detections",
           icon: ShieldAlert,
           iconClass: "text-red-400",
           bgClass: "bg-red-500/10",
         },
         {
-          label: "Active Sensors",
-          value: "42",
-          description: "IoT nodes online",
+          label: "Total Detections",
+          value: detectionsValue,
+          description: "AI events tracked",
           icon: Radio,
           iconClass: "text-emerald-400",
           bgClass: "bg-emerald-500/10",
         },
         {
-          label: "SMS Alerts",
-          value: "126",
-          description: "Dispatched today",
+          label: "Live Dashboard",
+          value: liveStats ? String(liveStats.live_dashboard_clients ?? 0) : "—",
+          description: "Connected clients",
           icon: Smartphone,
           iconClass: "text-blue-400",
           bgClass: "bg-blue-500/10",
         },
         {
-          label: "Active Users",
-          value: "38",
-          description: "Connected stakeholders",
+          label: "Connected Stakeholders",
+          value: "—",
+          description: "Active roles",
           icon: Users,
           iconClass: "text-purple-400",
           bgClass: "bg-purple-500/10",
@@ -117,7 +139,7 @@ const Overview = ({ currentUser, detectionLogs =[] }) => {
       return [
         {
           label: "Active Threats",
-          value: "05",
+          value: threatsValue,
           description: "Requires monitoring",
           icon: ShieldAlert,
           iconClass: "text-red-400",
@@ -133,8 +155,8 @@ const Overview = ({ currentUser, detectionLogs =[] }) => {
         },
         {
           label: "AI Detections",
-          value: "24",
-          description: "Detected today",
+          value: detectionsValue,
+          description: "Detected via backend",
           icon: Zap,
           iconClass: "text-amber-400",
           bgClass: "bg-amber-500/10",
@@ -154,7 +176,7 @@ const Overview = ({ currentUser, detectionLogs =[] }) => {
       return [
         {
           label: "Nearby Threats",
-          value: "02",
+          value: threatsValue,
           description: "In your assigned zone",
           icon: ShieldAlert,
           iconClass: "text-red-400",
@@ -190,7 +212,7 @@ const Overview = ({ currentUser, detectionLogs =[] }) => {
     return [
       {
         label: "Village Threats",
-        value: "03",
+        value: threatsValue,
         description: "Active in nearby zones",
         icon: ShieldAlert,
         iconClass: "text-red-400",
@@ -221,7 +243,7 @@ const Overview = ({ currentUser, detectionLogs =[] }) => {
         bgClass: "bg-emerald-500/10",
       },
     ];
-  }, [role]);
+  }, [role, liveStats, totalDetections, threatCount]);
 
   //recent sightings
   const demoSightings = [

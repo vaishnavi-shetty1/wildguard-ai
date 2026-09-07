@@ -11,8 +11,9 @@ import {
   Siren,
   Users,
 } from "lucide-react";
+import { sendSos } from "../api";
 
-const StakeholderPortal = ({ currentUser }) => {
+const StakeholderPortal = ({ currentUser, onNotification }) => {
   const [sosSent, setSosSent] = useState(false);
   const [selectedSector, setSelectedSector] = useState(
     currentUser?.locationName || "Your Assigned Sector"
@@ -95,8 +96,25 @@ const StakeholderPortal = ({ currentUser }) => {
     },
   ];
 
-  const sendSOS = () => {
+  const sendSOS = async () => {
     setSosSent(true);
+
+    try {
+      const emergencyMessage = `WILDGUARD EMERGENCY SOS: Immediate assistance required from ${locationName}. Reported by ${currentUser?.username || "Stakeholder"}.`;
+      await sendSos({
+        message: emergencyMessage,
+        location: locationName,
+      });
+      if (onNotification) {
+        onNotification({
+          title: "Emergency SOS Sent",
+          message: "Emergency broadcast dispatched to all stakeholders.",
+          type: "threat",
+        }, false);
+      }
+    } catch (error) {
+      console.error("Failed to send SOS:", error);
+    }
 
     setTimeout(() => {
       setSosSent(false);

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {Camera,CameraOff,Circle,RefreshCw,ShieldCheck,AlertTriangle,} from "lucide-react";
+import { runDetection } from "../utils/detectionModel";
 
 const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showControls = true,onDetection,}) => {
 
@@ -67,26 +68,42 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
     setIsDetecting(true);
 
     /*
-      This is currently a placeholder.
-
-      Later replace this section with:
-      - TensorFlow.js
-      - Teachable Machine
-      - YOLO
-      - your trained WildGuard model
+      Runs scans through the unified WildGuard detection model
+      (elephant, tiger, leopard). See utils/detectionModel.js.
     */
 
-    detectionIntervalRef.current = setInterval(() => {
-      const detection = {
-        label: "No Threat",
-        confidence: 0.97,
-        alertLevel: "LOW",
-        timestamp: new Date().toISOString(),
-        location,
-      };
+    const scan = async () => {
+      const result = await runDetection();
+
+      const detection = result
+        ? {
+            label: result.species,
+            speciesKey: result.speciesKey,
+            confidence: result.confidence,
+            alertLevel: result.threatLevel,
+            description: result.description,
+            timestamp: result.timestamp,
+            location,
+          }
+        : {
+            label: "No Threat",
+            speciesKey: "none",
+            confidence: 0,
+            alertLevel: "LOW",
+            description: "No wildlife detected.",
+            timestamp: new Date().toISOString(),
+            location,
+          };
+
       if (onDetection) {
         onDetection(detection);
       }
+    };
+
+    scan();
+
+    detectionIntervalRef.current = setInterval(() => {
+      scan();
     }, 3000);
   };
 

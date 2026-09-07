@@ -14,6 +14,8 @@ import NotificationToast from "../components/NotificationToast";
 import NotificationDrawer from "../components/NotificationDrawer";
 import { handleWildlifePrediction } from "../utils/handleWildlifePrediction";
 import { playNotificationSound, playThreatAlert, playSmsSound, playCameraConnectedSound, playCameraDisconnectedSound } from "../utils/audio";
+import { fetchDetections, mapBackendDetection, getCurrentUser } from "../api";
+import { useWebSocket } from "../hooks/useWebSocket";
 
 const ROLE_TABS = {
   admin: [
@@ -70,22 +72,89 @@ const HomePage = () => {
   //login user
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem( "wildguard_user" );
-      if (!storedUser) {
-        navigate("/login", { replace: true});
-        return;
-      }
-      const user = JSON.parse(storedUser);
-      setCurrentUser(user);
-    } catch (error) {
-      console.error( "Unable to load WildGuard user:", error);
-      localStorage.removeItem( "wildguard_user" );
-      localStorage.removeItem( "wildguard_token" );
-      localStorage.removeItem( "wildguard_remember" );
-      navigate("/login", { replace: true,});
+    let cancelled = false;
+    const storedUser = localStorage.getItem("wildguard_user");
+    const token = localStorage.getItem("wildguard_token");
+    if (!storedUser || !token) {
+      navigate("/login", { replace: true});
+      return;
     }
+
+    // Load latest user from backend to keep role/settings in sync
+    getCurrentUser()
+      .then((backendUser) => {
+        if (cancelled) return;
+        const user = {
+          id: String(backendUser.id),
+          username: backendUser.username,
+          email: backendUser.email,
+          role: backendUser.role,
+          phone: backendUser.phone || "",
+          locationName: backendUser.location_name || "",
+          smsAlertsEnabled: backendUser.sms_alerts_enabled,
+          createdAt: backendUser.created_at || new Date().toISOString(),
+          isActive: backendUser.is_active,
+        };
+        localStorage.setItem("wildguard_user", JSON.stringify(user));
+        setCurrentUser(user);
+      })
+      .catch(() => {
+        // Backend unreachable — fall back to cached user
+        if (cancelled) return;
+        try {
+          const user = JSON.parse(storedUser);
+          setCurrentUser(user);
+        } catch (error) {
+          localStorage.removeItem("wildguard_user");
+          localStorage.removeItem("wildguard_token");
+          navigate("/login", { replace: true});
+        }
+      });
+
+    return () => { cancelled = true; };
   }, [navigate]);
+
+  //load detections from backend
+  useEffect(() => {
+    let cancelled = false;
+    fetchDetections({ limit: 100 })
+      .then((records) => {
+        if (cancelled) return;
+        setDetectionLogs((current) => {
+          const mapped = (records || []).map(mapBackendDetection);
+          const ids = new Set(current.map((d) => String(d.id)));
+          const fresh = mapped.filter((d) => !ids.has(String(d.id)));
+          return [...fresh, ...current].slice(0, 500);
+        });
+      })
+      .catch((error) => {
+        console.warn("No existing detections loaded from backend:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  //real-time backend detections via WebSocket
+  useWebSocket({
+    enabled: !!currentUser,
+    onEvent: (message) => {
+      if (message.event === "new_detection" && message.data) {
+        const mapped = mapBackendDetection(message.data);
+        setDetectionLogs((current) => {
+          const exists = current.some((d) => String(d.id) === String(mapped.id));
+          if (exists) return current;
+          return [mapped, ...current].slice(0, 500);
+        });
+        addNotification({
+          id: `ws-${mapped.id}-${Date.now()}`,
+          title: "Wildlife Detected",
+          message: `${mapped.animal} identified by AI (confidence ${mapped.confidence}).`,
+          type: "threat",
+        });
+      }
+    },
+  });
 
   //active tab from url
   useEffect(() => {

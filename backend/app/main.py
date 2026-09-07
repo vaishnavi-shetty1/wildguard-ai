@@ -3,23 +3,78 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 
-from .database import init_db
-from .routes import router
+from .database import init_db, SessionLocal, User
+from .routes import router, auth_router, users_router, sms_router, alerts_router, logs_router
+from .auth import hash_password
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
 )
 
+DEMO_USERS = [
+    {
+        "username": "Administrator",
+        "email": "admin@wildguard.ai",
+        "password": "admin123",
+        "role": "admin",
+        "phone": "",
+        "location_name": "WildGuard Control Center",
+    },
+    {
+        "username": "Forest Operator",
+        "email": "operator@wildguard.ai",
+        "password": "operator123",
+        "role": "operator",
+        "phone": "",
+        "location_name": "Forest Operations Zone",
+    },
+    {
+        "username": "Land Owner",
+        "email": "landowner@wildguard.ai",
+        "password": "landowner123",
+        "role": "landowner",
+        "phone": "",
+        "location_name": "Sector B3 - Green Valley Orchards",
+    },
+    {
+        "username": "Village Head",
+        "email": "villagehead@wildguard.ai",
+        "password": "villagehead123",
+        "role": "village_head",
+        "phone": "",
+        "location_name": "Sector A4 - Silverwood Hamlet",
+    },
+]
+
+
+async def seed_demo_users():
+    async with SessionLocal() as db:
+        for demo in DEMO_USERS:
+            result = await db.execute(select(User).where(User.email == demo["email"]))
+            if result.scalar_one_or_none():
+                continue
+            user = User(
+                username=demo["username"],
+                email=demo["email"],
+                hashed_password=hash_password(demo["password"]),
+                role=demo["role"],
+                phone=demo["phone"],
+                location_name=demo["location_name"],
+            )
+            db.add(user)
+        await db.commit()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables if they don't exist yet
     await init_db()
     logging.getLogger(__name__).info("Database ready.")
+    await seed_demo_users()
+    logging.getLogger(__name__).info("Demo users seeded.")
     yield
-    # Shutdown: nothing to clean up for SQLite; add pool disposal here for Postgres
 
 
 app = FastAPI(
@@ -34,7 +89,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow the dashboard frontend (any origin in dev; restrict in production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,6 +97,11 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(users_router, prefix="/api/v1")
+app.include_router(sms_router, prefix="/api/v1")
+app.include_router(alerts_router, prefix="/api/v1")
+app.include_router(logs_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Health"])
