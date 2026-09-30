@@ -25,8 +25,8 @@ Jetson Nano: USB camera → frames → preprocessing → TensorRT → NMS → bo
 | Area | Status |
 |---|---|
 | React dashboard | Implemented: authentication, roles, browser-camera UI, notifications, detection history, SMS/admin screens. |
-| FastAPI backend | Implemented: event ingestion, SQLite, JWT users, WebSockets, SMS logs, optional Twilio detection alerts. |
-| Browser classifier | Demo only; it produces randomized predictions and is not YOLO/TensorRT inference. |
+| FastAPI backend | Implemented: event ingestion, SQLite, JWT users, WebSockets, SMS logs, optional Twilio detection alerts, YOLO inference endpoint (`POST /api/v1/ai/predict`). |
+| Browser classifier | Real YOLO inference: browser captures a frame and calls the backend, which runs the bundled `yolo11n.pt` checkpoint (see `backend/app/ai/detector.py`). |
 | YOLO11n training, dataset validation, ONNX export | Required; not in this repository yet. |
 | TensorRT engine and Jetson camera/tracker/GPIO code | Required; not in this repository yet. |
 | Accuracy and Jetson benchmarks | Must be measured; no values may be invented. |
@@ -207,6 +207,18 @@ backend/   FastAPI + async SQLAlchemy API
 The backend can receive confirmed Jetson events through `POST /api/v1/detections` using `X-Api-Key`. It validates species/confidence/GPS, stores the event, broadcasts `new_detection` through `WS /api/v1/ws/live`, and can use Twilio for device-originated alerts. It also exposes detection history/stats, JWT authentication, users, SMS configuration/logs, SOS, and system logs.
 
 The backend already persists species, confidence, camera/device ID, time, location, optional thumbnail, lifecycle state, and SMS result. A future Jetson `logger.py` should submit confirmed detections with a stable device ID.
+
+### On-device browser inference
+
+The dashboard no longer uses randomized predictions. When the Live Monitor or camera feed starts "AI scanning", the browser captures a frame, JPEG-encodes it, and POSTs it to `POST /api/v1/ai/predict` (authenticated with the dashboard JWT or `X-Api-Key`). The endpoint runs the bundled Ultralytics checkpoint (`backend/app/ai/models/yolo11n.pt`) and returns detected species, confidence, bounding boxes, counts, and inference latency; the frontend draws species-coloured boxes over the video and logs confirmed events.
+
+- The bundled `yolo11n.pt` is the pretrained COCO checkpoint — it detects `elephant` (class 20) and other animals but not tiger/leopard. Swap in a trained three-class `best.pt` at the same path or set `WILDLIFE_MODEL_PATH` to it; the code reads `model.names` dynamically.
+- Measured on this COCO checkpoint: a tiger photograph is returned as `zebra` at ~88% confidence. A missing class is therefore reported as a *different* animal, not as no detection, so do not treat a low-species count as evidence of an empty frame.
+- `GET /api/v1/ai/model` reports the active checkpoint, its class list, and which target species it cannot emit. The Live Monitor uses it to show a warning when `tiger`/`leopard` are absent, which is what makes a checkpoint swap verifiable instead of silent.
+- The model is loaded lazily on the first request and cached; the first call is slower (model init + inference, measured ~6-9s cold and ~200-300ms warm on CPU).
+- `draw_boxes: true` optionally returns a base64 JPEG with boxes drawn (default off for speed).
+- The device events endpoint (`POST /api/v1/detections`) now also accepts a dashboard JWT, so browser detections persist like Jetson events.
+- Scan loops skip a tick while the previous inference is still in flight, so the cold-start call cannot queue up stale frames.
 
 ### Run the dashboard locally
 

@@ -2,10 +2,12 @@ import {
   createWildlifePredictionNotification,
 } from "./wildlifePrediction";
 import { postDetection, getThreatLevel } from "../api";
+import { TARGET_SPECIES } from "./detectionModel";
 
 const THREAT_TO_SPECIES = {
+  CRITICAL: "tiger",
   HIGH: "elephant",
-  MEDIUM: "tiger",
+  MEDIUM: "unknown",
   LOW: "unknown",
 };
 
@@ -30,14 +32,20 @@ export const handleWildlifePrediction = async ({
 
   /*
    * Normalize the prediction for the backend.
+   *
+   * Prefer the real model output (speciesKey); fall back to the
+   * legacy threat-level mapping for older flows.
    */
   const species =
+    prediction.speciesKey ||
     mapThreatToSpecies(
       prediction.threatLevel
     );
 
   /*
-   * Try to persist to the backend.
+   * Try to persist to the backend, but only for species the
+   * ingestion API supports (elephant/tiger/leopard). Other
+   * wildlife (cow, horse, ...) stays local to the dashboard.
    *
    * On success, use the real server response;
    * otherwise keep the local prediction.
@@ -50,22 +58,24 @@ export const handleWildlifePrediction = async ({
   let level =
     prediction.threatLevel || getThreatLevel(species, confidence);
 
-  try {
-    const ack = await postDetection({
-      species,
-      confidence: Math.min(Math.max(confidence, 0), 1),
-      device_id:
-        prediction.deviceId ||
-        cameraState?.cameraName ||
-        "web-client",
-    });
+  if (TARGET_SPECIES.has(species)) {
+    try {
+      const ack = await postDetection({
+        species,
+        confidence: Math.min(Math.max(confidence, 0), 1),
+        device_id:
+          prediction.deviceId ||
+          cameraState?.cameraName ||
+          "web-client",
+      });
 
-    resolvedId = ack.id;
-  } catch (error) {
-    console.warn(
-      "Backend unreachable — keeping local prediction:",
-      error.message
-    );
+      resolvedId = ack.id;
+    } catch (error) {
+      console.warn(
+        "Backend unreachable — keeping local prediction:",
+        error.message
+      );
+    }
   }
 
   /*

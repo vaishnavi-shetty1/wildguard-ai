@@ -13,6 +13,7 @@ function getDeviceHeaders() {
   return {
     "Content-Type": "application/json",
     "X-Api-Key": token,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
@@ -118,6 +119,31 @@ export function sendSos(payload) {
 
 export function fetchSystemLogs(limit = 100) {
   return request(`/logs?limit=${limit}`);
+}
+
+// ── AI inference ─────────────────────────────────────────────────────────────
+
+export function predictImage({
+  image,
+  confidence_threshold = 0.4,
+  iou_threshold = 0.45,
+  max_detections = 20,
+  draw_boxes = false,
+} = {}) {
+  return request("/ai/predict", {
+    method: "POST",
+    body: JSON.stringify({
+      image,
+      confidence_threshold,
+      iou_threshold,
+      max_detections,
+      draw_boxes,
+    }),
+  });
+}
+
+export function fetchModelInfo() {
+  return request("/ai/model");
 }
 
 // ── Detections / stats ────────────────────────────────────────────────────────

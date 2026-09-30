@@ -216,3 +216,56 @@ class SystemLogOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── AI inference schemas ───────────────────────────────────────────────────────
+
+
+class AIPredictRequest(BaseModel):
+    """Payload for `POST /api/v1/ai/predict` — a single image to run YOLO on."""
+
+    image: str = Field(
+        ...,
+        description="Base64-encoded image (JPEG/PNG), with or without a `data:` URI prefix",
+    )
+    confidence_threshold: float = Field(0.25, ge=0.01, le=1.0)
+    iou_threshold: float = Field(0.45, ge=0.05, le=1.0)
+    max_detections: int = Field(20, ge=1, le=100)
+    draw_boxes: bool = Field(
+        False,
+        description="Return a base64 JPEG with boxes drawn (slower)",
+    )
+
+
+class AIModelInfoOut(BaseModel):
+    """Which checkpoint is loaded and what it can actually detect."""
+
+    model: str
+    path: str
+    imgsz: int
+    num_classes: int
+    classes: list[str]
+    target_species: list[str]
+    missing_target_species: list[str]
+    covers_target_species: bool
+
+
+class DetectionBoxOut(BaseModel):
+    """One detected object with its pixel bounding box."""
+
+    class_id: int
+    species: str
+    confidence: float
+    bbox: list[float]  # [x1, y1, x2, y2] in the original image space
+
+
+class AIPredictResponse(BaseModel):
+    model: str
+    imgsz: int
+    detections: list[DetectionBoxOut] = Field(default_factory=list)
+    counts: dict[str, int] = Field(default_factory=dict)
+    total: int = 0
+    inference_ms: float = 0.0
+    image_width: int = 0
+    image_height: int = 0
+    image_b64: Optional[str] = None
+
+

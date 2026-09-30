@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import logging
@@ -14,12 +15,13 @@ from .schemas import (
     UserCreate, UserLogin, UserUpdate, UserOut, Token,
     SmsSendRequest, SmsLogOut, SmsConfigOut, SmsConfigUpdate,
     SosRequest, SosOut, SystemLogOut,
+    AIPredictRequest, AIPredictResponse, AIModelInfoOut,
 )
 from .notifications import send_sms_alerts
 from .websocket_manager import manager
 from .auth import (
     hash_password, verify_password, create_access_token,
-    get_current_user, require_role,
+    get_current_user, require_role, decode_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,7 @@ users_router = APIRouter(prefix="/users", tags=["Users"])
 sms_router = APIRouter(prefix="/sms", tags=["SMS"])
 alerts_router = APIRouter(prefix="/alerts", tags=["Alerts"])
 logs_router = APIRouter(prefix="/logs", tags=["System Logs"])
+ai_router = APIRouter(prefix="/ai", tags=["AI Inference"])
 
 
 def _parse_json(value: Optional[str], default: list) -> list:
@@ -42,14 +45,36 @@ def _parse_json(value: Optional[str], default: list) -> list:
 
 # ── Auth helper ────────────────────────────────────────────────────────────────
 
-def _verify_key(x_api_key: str = Header(...)) -> None:
+async def _verify_key(
+    x_api_key: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+) -> None:
     """
-    Simple shared-secret auth for requests from the Raspberry Pi.
-    Set API_SECRET_KEY in .env — the Pi must send it as the X-Api-Key header.
+    Shared-secret auth for requests from devices (X-Api-Key) OR the dashboard
+    (Bearer JWT). Set API_SECRET_KEY in .env — device clients send it as the
+    X-Api-Key header; the React dashboard sends a normal dashboard JWT.
     """
     expected = os.getenv("API_SECRET_KEY", "change_me")
-    if x_api_key != expected:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    if x_api_key and x_api_key == expected:
+        return None
+
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+        payload = decode_token(token)
+        user_id = payload.get("sub") if payload else None
+        if user_id is not None:
+            try:
+                user_id = int(user_id)
+            except (TypeError, ValueError):
+                user_id = None
+        if user_id is not None:
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user and user.is_active:
+                return None
+
+    raise HTTPException(status_code=401, detail="Invalid API key or authentication token")
 
 
 # ── Detection ingestion ────────────────────────────────────────────────────────
@@ -255,6 +280,68 @@ async def websocket_live(ws: WebSocket) -> None:
                 await ws.send_text('{"event":"pong"}')
     except WebSocketDisconnect:
         await manager.disconnect(ws)
+
+
+# ── AI inference ───────────────────────────────────────────────────────────────
+
+@ai_router.get(
+    "/model",
+    response_model=AIModelInfoOut,
+    summary="Describe the loaded checkpoint",
+    description=(
+        "Returns the active checkpoint, its class list, and which of the "
+        "target species (elephant/tiger/leopard) it cannot emit. Lets the "
+        "dashboard warn when a checkpoint is missing a species instead of "
+        "silently reporting no detections."
+    ),
+)
+async def ai_model_info(
+    _: None = Depends(_verify_key),
+) -> AIModelInfoOut:
+    from .ai.detector import get_model_info
+
+    try:
+        return AIModelInfoOut(**await asyncio.to_thread(get_model_info))
+    except Exception as exc:
+        logger.exception("Failed to read model info")
+        raise HTTPException(status_code=500, detail=f"Failed to read model info: {exc}")
+
+
+@ai_router.post(
+    "/predict",
+    response_model=AIPredictResponse,
+    summary="Run YOLO inference on a single image",
+    description=(
+        "Accepts a base64 image and returns detected species, confidence, "
+        "bounding boxes, and per-species counts using the bundled YOLO "
+        "checkpoint (models/yolo11n.pt). Inference runs off the event loop."
+    ),
+)
+async def ai_predict(
+    payload: AIPredictRequest,
+    _: None = Depends(_verify_key),
+) -> AIPredictResponse:
+    # Heavy ML imports are deferred so the API boots fast and only pulls in
+    # ultralytics/cv2/numpy when inference is actually used.
+    from .ai.detector import decode_image_b64, run_detection
+
+    try:
+        image_bgr = decode_image_b64(payload.image)
+        result = await asyncio.to_thread(
+            run_detection,
+            image_bgr,
+            conf=payload.confidence_threshold,
+            iou=payload.iou_threshold,
+            max_detections=payload.max_detections,
+            draw=payload.draw_boxes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("AI inference failed")
+        raise HTTPException(status_code=500, detail=f"AI inference failed: {exc}")
+
+    return AIPredictResponse(**result)
 
 
 # ── Auth routes ────────────────────────────────────────────────────────────────

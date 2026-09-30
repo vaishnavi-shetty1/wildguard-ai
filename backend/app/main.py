@@ -6,7 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from .database import init_db, SessionLocal, User
-from .routes import router, auth_router, users_router, sms_router, alerts_router, logs_router
+from .routes import (
+    router,
+    auth_router,
+    users_router,
+    sms_router,
+    alerts_router,
+    logs_router,
+    ai_router,
+)
 from .auth import hash_password
 
 logging.basicConfig(
@@ -102,6 +110,7 @@ app.include_router(users_router, prefix="/api/v1")
 app.include_router(sms_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(logs_router, prefix="/api/v1")
+app.include_router(ai_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Health"])

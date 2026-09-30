@@ -26,6 +26,18 @@ const NotificationToast = ({
     return null;
   }
 
+  /*
+   * `confidence` is a 0-1 fraction across every notification source
+   * (model predictions, WebSocket detections), but some callers already
+   * pass a 0-100 percentage. Normalise to a percentage for display so the
+   * bar and label can never disagree with each other.
+   */
+  const rawConfidence = Number(notification.confidence);
+  const confidencePct =
+    Number.isFinite(rawConfidence) && rawConfidence > 0
+      ? Math.min(100, Math.round(rawConfidence * 100))
+      : null;
+
   const getIcon = () => {
     if (notification.type === "danger") {
       return (
@@ -116,7 +128,7 @@ const NotificationToast = ({
             {notification.message}
           </p>
 
-          {notification.confidence && (
+          {confidencePct !== null && (
             <div className="mt-3 flex items-center gap-2">
               <span className="text-[9px] uppercase tracking-wider text-slate-500">
                 Confidence
@@ -126,13 +138,13 @@ const NotificationToast = ({
                 <div
                   className="h-full rounded-full bg-emerald-400"
                   style={{
-                    width: `${notification.confidence}%`,
+                    width: `${confidencePct}%`,
                   }}
                 />
               </div>
 
               <span className="text-[10px] font-bold text-emerald-400">
-                {notification.confidence}%
+                {confidencePct}%
               </span>
             </div>
           )}

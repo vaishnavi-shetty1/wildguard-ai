@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -13,7 +14,22 @@ import {
   Loader2,
 } from "lucide-react";
 
-import { predictWildlife } from "../utils/wildlifeDetection";
+import { predictWildlife, getModelInfo } from "../utils/wildlifeDetection";
+
+const SPECIES_COLORS = {
+    elephant: "#f59e0b",
+    tiger: "#ef4444",
+    leopard: "#8b5cf6",
+    bear: "#a16207",
+    zebra: "#06b6d4",
+    giraffe: "#84cc16",
+    horse: "#a78bfa",
+    sheep: "#e2e8f0",
+    cow: "#f97316",
+    bird: "#14b8a6",
+    cat: "#f43f5e",
+    dog: "#3b82f6",
+  };
 
 const LiveMonitor = ({
   currentUser,
@@ -22,6 +38,9 @@ const LiveMonitor = ({
   onPrediction,
 }) => {
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  const predictionRef = useRef(null);
 
   const [isScanning, setIsScanning] =
     useState(false);
@@ -32,7 +51,91 @@ const LiveMonitor = ({
   const [cameraError, setCameraError] =
     useState("");
 
+  /*
+   * Which checkpoint the backend actually loaded, and which of the target
+   * species it cannot emit. A checkpoint that lacks `tiger`/`leopard`
+   * reports nothing for those animals, which otherwise looks identical to
+   * "no animal in frame".
+   */
+  const [modelInfo, setModelInfo] =
+    useState(null);
+
   const scanIntervalRef = useRef(null);
+  /*
+   * Inference is a blocking backend call (hundreds of ms warm, several
+   * seconds on the first request while the checkpoint loads). Without this
+   * guard the 3s interval fires while the previous scan is still running,
+   * so requests queue up and an older frame can resolve after a newer one.
+   */
+  const scanInFlightRef = useRef(false);
+
+  // --------------------------------------------------
+  // BOUNDING-BOX OVERLAY
+  // --------------------------------------------------
+
+  const drawDetections = useCallback(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    if (canvas.width !== Math.round(rect.width)) {
+      canvas.width = Math.round(rect.width);
+    }
+    if (canvas.height !== Math.round(rect.height)) {
+      canvas.height = Math.round(rect.height);
+    }
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const result = predictionRef.current;
+    const detections = result?.allDetections || [];
+    if (!detections.length) return;
+
+    const srcW =
+      result.imageWidth ||
+      video.videoWidth ||
+      canvas.width;
+    const srcH =
+      result.imageHeight ||
+      video.videoHeight ||
+      canvas.height;
+    const scaleX = canvas.width / srcW;
+    const scaleY = canvas.height / srcH;
+
+    ctx.lineWidth = 3;
+    ctx.font = "bold 13px ui-monospace, monospace";
+
+    detections.forEach((d) => {
+      const [x1, y1, x2, y2] = d.bbox || [];
+      if (typeof x1 !== "number") return;
+
+      const color =
+        SPECIES_COLORS[d.species] || "#22c55e";
+      const px1 = x1 * scaleX;
+      const py1 = y1 * scaleY;
+      const pw = (x2 - x1) * scaleX;
+      const ph = (y2 - y1) * scaleY;
+
+      ctx.strokeStyle = color;
+      ctx.strokeRect(px1, py1, pw, ph);
+
+      const label = `${d.label || d.species} ${Math.round(
+        d.confidence * 100
+      )}%`;
+      const labelWidth = ctx.measureText(label).width;
+      const labelY = Math.max(0, py1 - 20);
+
+      ctx.fillStyle = color;
+      ctx.fillRect(px1, labelY, labelWidth + 10, 18);
+      ctx.fillStyle = "#020617";
+      ctx.fillText(label, px1 + 5, labelY + 13);
+    });
+  }, []);
 
   // --------------------------------------------------
   // START CAMERA
@@ -138,6 +241,13 @@ const LiveMonitor = ({
       return;
     }
 
+    // Skip this tick if the previous inference has not returned yet.
+    if (scanInFlightRef.current) {
+      return;
+    }
+
+    scanInFlightRef.current = true;
+
     try {
       const result =
         await predictWildlife(
@@ -165,6 +275,8 @@ const LiveMonitor = ({
         "AI prediction error:",
         error
       );
+    } finally {
+      scanInFlightRef.current = false;
     }
   };
 
@@ -210,6 +322,24 @@ const LiveMonitor = ({
   };
 
   // --------------------------------------------------
+  // LOADED CHECKPOINT INFO
+  // --------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getModelInfo().then((info) => {
+      if (!cancelled) {
+        setModelInfo(info);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // --------------------------------------------------
   // CLEANUP
   // --------------------------------------------------
 
@@ -240,6 +370,23 @@ const LiveMonitor = ({
         .catch(() => {});
     }
   }, [cameraState?.stream]);
+
+  // --------------------------------------------------
+  // DRAW / CLEAR BOUNDING BOXES
+  // --------------------------------------------------
+
+  useEffect(() => {
+    predictionRef.current = prediction;
+    drawDetections();
+  }, [prediction, drawDetections]);
+
+  useEffect(() => {
+    const onResize = () => drawDetections();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, [drawDetections]);
 
   return (
     <section className="space-y-5">
@@ -276,6 +423,12 @@ const LiveMonitor = ({
             muted
             playsInline
             className="h-full w-full object-cover"
+          />
+
+          {/* YOLO bounding boxes */}
+          <canvas
+            ref={canvasRef}
+            className="pointer-events-none absolute inset-0 h-full w-full"
           />
 
           {!cameraState?.isActive && (
@@ -399,6 +552,41 @@ const LiveMonitor = ({
 
         </div>
       )}
+
+      {/* MODEL CAPABILITY WARNING */}
+
+      {modelInfo &&
+        modelInfo.missing_target_species
+          .length > 0 && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <AlertTriangle
+              size={18}
+              className="mt-0.5 shrink-0 text-amber-400"
+            />
+
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-amber-300">
+                Loaded checkpoint cannot detect{" "}
+                {modelInfo.missing_target_species.join(", ")}
+              </p>
+
+              <p className="mt-1 text-[10px] leading-4 text-amber-200/70">
+                {modelInfo.model} (
+                {modelInfo.num_classes} classes) has no
+                label for{" "}
+                {modelInfo.missing_target_species.join(
+                  " or "
+                )}
+                , so those animals will not be reported. Set{" "}
+                <code className="font-mono">
+                  WILDLIFE_MODEL_PATH
+                </code>{" "}
+                to a checkpoint trained on elephant, tiger and
+                leopard to cover all three.
+              </p>
+            </div>
+          </div>
+        )}
 
       {/* AI PREDICTION */}
 

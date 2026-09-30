@@ -7,6 +7,13 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const detectionIntervalRef = useRef(null);
+  /*
+   * Inference blocks on a backend call (hundreds of ms warm, several
+   * seconds on the first request while the checkpoint loads). Without this
+   * guard the 3s interval fires while the previous scan is still running,
+   * so requests queue up and an older frame can resolve after a newer one.
+   */
+  const detectionInFlightRef = useRef(false);
 
   const [cameraStatus, setCameraStatus] = useState("idle");
   const [cameraError, setCameraError] = useState("");
@@ -68,35 +75,48 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
     setIsDetecting(true);
 
     /*
-      Runs scans through the unified WildGuard detection model
-      (elephant, tiger, leopard). See utils/detectionModel.js.
+      Runs scans through the WildGuard detection model: frames are
+      captured and sent to the backend YOLO checkpoint for inference.
+      See utils/detectionModel.js.
     */
 
     const scan = async () => {
-      const result = await runDetection();
+      if (detectionInFlightRef.current) {
+        return;
+      }
 
-      const detection = result
-        ? {
-            label: result.species,
-            speciesKey: result.speciesKey,
-            confidence: result.confidence,
-            alertLevel: result.threatLevel,
-            description: result.description,
-            timestamp: result.timestamp,
-            location,
-          }
-        : {
-            label: "No Threat",
-            speciesKey: "none",
-            confidence: 0,
-            alertLevel: "LOW",
-            description: "No wildlife detected.",
-            timestamp: new Date().toISOString(),
-            location,
-          };
+      detectionInFlightRef.current = true;
 
-      if (onDetection) {
-        onDetection(detection);
+      try {
+        const result = await runDetection(videoRef.current);
+
+        const detection = result
+          ? {
+              label: result.species,
+              speciesKey: result.speciesKey,
+              confidence: result.confidence,
+              alertLevel: result.threatLevel,
+              description: result.description,
+              timestamp: result.timestamp,
+              location,
+            }
+          : {
+              label: "No Threat",
+              speciesKey: "none",
+              confidence: 0,
+              alertLevel: "LOW",
+              description: "No wildlife detected.",
+              timestamp: new Date().toISOString(),
+              location,
+            };
+
+        if (onDetection) {
+          onDetection(detection);
+        }
+      } catch (error) {
+        console.error("Detection error:", error);
+      } finally {
+        detectionInFlightRef.current = false;
       }
     };
 
