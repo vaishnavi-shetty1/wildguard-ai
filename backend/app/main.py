@@ -91,7 +91,7 @@ app = FastAPI(
         "Real-time wildlife detection alert system backend. "
         "Receives detection events from a Raspberry Pi, stores them, "
         "broadcasts to live dashboard clients via WebSocket, "
-        "and sends SMS alerts via Twilio."
+        "and records alerts for local review."
     ),
     version="1.0.0",
     lifespan=lifespan,

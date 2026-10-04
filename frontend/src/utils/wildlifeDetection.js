@@ -12,6 +12,7 @@
 export {
   predictWildlife,
   runDetection,
+  runTeachableDetection,
   getModelInfo,
   DETECTION_SPECIES,
   getSpeciesMeta,

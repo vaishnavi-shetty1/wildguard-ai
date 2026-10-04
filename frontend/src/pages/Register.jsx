@@ -29,7 +29,7 @@ const Field = ({label,name,placeholder,value,onChange,error,type = "text",passwo
       </div>
 
       {error && (
-        <span className="text-[11px] font-normal text-[#ffafaf]">
+        <span className="text-[14px] font-normal text-[#ffafaf]">
           {error}
         </span>
       )}
@@ -336,7 +336,7 @@ const Register = () => {
               Enable SMS alerts
             </span>
 
-            <span className="block text-[10px] font-normal text-[#cce4dcb3]">
+            <span className="block text-[13px] font-normal text-[#cce4dcb3]">
               Receive wildlife threat
               notifications.
             </span>

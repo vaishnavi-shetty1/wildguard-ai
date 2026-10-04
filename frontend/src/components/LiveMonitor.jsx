@@ -76,7 +76,7 @@ const LiveMonitor = ({
   const drawDetections = useCallback(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    if (!canvas || !video) return;
+    if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -98,11 +98,11 @@ const LiveMonitor = ({
 
     const srcW =
       result.imageWidth ||
-      video.videoWidth ||
+      video?.videoWidth ||
       canvas.width;
     const srcH =
       result.imageHeight ||
-      video.videoHeight ||
+      video?.videoHeight ||
       canvas.height;
     const scaleX = canvas.width / srcW;
     const scaleY = canvas.height / srcH;
@@ -465,7 +465,7 @@ const LiveMonitor = ({
                 <span className="relative size-2 rounded-full bg-emerald-400" />
               </span>
 
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+              <span className="text-[13px] font-bold uppercase tracking-wider text-emerald-400">
                 Camera Live
               </span>
 
@@ -484,7 +484,7 @@ const LiveMonitor = ({
                 "No camera connected"}
             </p>
 
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[13px] text-slate-500">
               {isScanning
                 ? "AI scanning active"
                 : "AI scanning paused"}
@@ -570,7 +570,7 @@ const LiveMonitor = ({
                 {modelInfo.missing_target_species.join(", ")}
               </p>
 
-              <p className="mt-1 text-[10px] leading-4 text-amber-200/70">
+              <p className="mt-1 text-[13px] leading-4 text-amber-200/70">
                 {modelInfo.model} (
                 {modelInfo.num_classes} classes) has no
                 label for{" "}
@@ -599,7 +599,7 @@ const LiveMonitor = ({
               Latest AI Prediction
             </h3>
 
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[13px] text-slate-500">
               Result from camera analysis
             </p>
           </div>
@@ -612,7 +612,7 @@ const LiveMonitor = ({
                 className="animate-spin"
               />
 
-              <span className="text-[10px] font-bold uppercase">
+              <span className="text-[13px] font-bold uppercase">
                 Scanning
               </span>
 
@@ -648,7 +648,7 @@ const LiveMonitor = ({
             </div>
 
             <div
-              className={`rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase ${
+              className={`rounded-lg px-3 py-1.5 text-[13px] font-bold uppercase ${
                 prediction.threatLevel ===
                 "HIGH"
                   ? "bg-red-500/10 text-red-400"

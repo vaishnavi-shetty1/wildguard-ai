@@ -163,7 +163,7 @@ const Login = () => {
 
       {/* DEMO LOGIN */}
       <div className="mt-5 border-t border-white/5 pt-4">
-        <p className="mb-2 text-center text-[9px] font-bold uppercase tracking-[.16em] text-[#7fe6b4]">
+        <p className="mb-2 text-center text-[12px] font-bold uppercase tracking-[.16em] text-[#7fe6b4]">
           Demo accounts
         </p>
 
@@ -186,10 +186,10 @@ const Login = () => {
 const DemoLogin = ({label,email,password,onSelect}) => {
   return (
     <button type="button" onClick={() => onSelect(email, password)} className="rounded-[10px] border border-[#8cb3a426] bg-white/3 px-2.5 py-2 text-left transition hover:border-[#7fe6b466] hover:bg-white/5">
-      <span className="block text-[10px] font-bold text-[#edfdf5]">
+      <span className="block text-[13px] font-bold text-[#edfdf5]">
         {label}
       </span>
-      <span className="block truncate text-[8px] text-[#9fb8b0]">
+      <span className="block truncate text-[11px] text-[#9fb8b0]">
         {email}
       </span>
     </button>

@@ -524,7 +524,7 @@ async def get_sms_config(
         alert_levels=_parse_json(config.alert_levels, ["HIGH", "CRITICAL"]),
         selected_species=_parse_json(config.selected_species, ["elephant", "tiger", "leopard", "unknown"]),
         default_sender_name=config.default_sender_name,
-        twilio_configured=config.twilio_configured or bool(os.getenv("TWILIO_ACCOUNT_SID")),
+        twilio_configured=False,
     )
 
 
@@ -550,7 +550,7 @@ async def update_sms_config(
         alert_levels=_parse_json(config.alert_levels, ["HIGH", "CRITICAL"]),
         selected_species=_parse_json(config.selected_species, ["elephant", "tiger", "leopard", "unknown"]),
         default_sender_name=config.default_sender_name,
-        twilio_configured=config.twilio_configured or bool(os.getenv("TWILIO_ACCOUNT_SID")),
+        twilio_configured=False,
     )
 
 
@@ -572,8 +572,9 @@ async def send_sms(
         raise HTTPException(status_code=400, detail="No recipients selected")
 
     config = await _get_or_create_sms_config(db)
-    # Prefer env-based Twilio detection for actual sending
-    twilio_active = bool(os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN") and os.getenv("TWILIO_FROM_NUMBER"))
+    # Outbound delivery was removed with the Twilio integration, so every
+    # broadcast is recorded as simulated and nothing leaves the machine.
+    twilio_active = False
 
     created_logs = []
     for recipient in recipients:

@@ -86,7 +86,7 @@ const DetectionLogs = ({ detectionLogs = [] }) => {
                 Wildlife Detection Logs
               </h1>
 
-              <p className="mt-1 text-[10px] text-slate-500">
+              <p className="mt-1 text-[13px] text-slate-500">
                 Complete history of AI and sensor wildlife detections
               </p>
             </div>
@@ -95,7 +95,7 @@ const DetectionLogs = ({ detectionLogs = [] }) => {
 
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-center">
 
-            <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+            <p className="text-[12px] font-bold uppercase tracking-wider text-emerald-400">
               Total Detections
             </p>
 
@@ -127,7 +127,7 @@ const DetectionLogs = ({ detectionLogs = [] }) => {
                 All Detection Records
               </h2>
 
-              <p className="text-[9px] text-slate-500">
+              <p className="text-[12px] text-slate-500">
                 Every wildlife prediction received by WildGuard
               </p>
             </div>
@@ -203,7 +203,7 @@ const DetectionLogs = ({ detectionLogs = [] }) => {
                       </h3>
 
                       <span
-                        className={`rounded border px-2 py-0.5 text-[8px] font-bold ${getAlertClass(
+                        className={`rounded border px-2 py-0.5 text-[11px] font-bold ${getAlertClass(
                           detection.level
                         )}`}
                       >
@@ -213,7 +213,7 @@ const DetectionLogs = ({ detectionLogs = [] }) => {
                     </div>
 
 
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-[10px] text-slate-500">
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-slate-500">
 
                       <span className="flex items-center gap-1.5">
                         <MapPin size={11} />
@@ -242,7 +242,7 @@ const DetectionLogs = ({ detectionLogs = [] }) => {
 
                   <div className="shrink-0 rounded-lg border border-slate-800 bg-slate-900/70 px-4 py-2 text-center">
 
-                    <p className="text-[8px] uppercase tracking-wider text-slate-500">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-500">
                       AI Confidence
                     </p>
 
@@ -257,7 +257,7 @@ const DetectionLogs = ({ detectionLogs = [] }) => {
 
                 {/* CAMERA */}
 
-                <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-slate-900 pt-3 text-[9px] text-slate-600">
+                <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-slate-900 pt-3 text-[12px] text-slate-600">
 
                   <span>
                     Detection ID:{" "}

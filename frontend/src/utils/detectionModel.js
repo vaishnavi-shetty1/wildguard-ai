@@ -16,6 +16,7 @@
  */
 
 import { predictImage, fetchModelInfo } from "../api";
+import { predictFromVideo } from "./teachableMachine";
 
 export const DETECTION_SPECIES = {
   elephant: {
@@ -220,15 +221,61 @@ export const runDetection = async (videoElement) => {
   return mapPredictResponse(response);
 };
 
+export const runTeachableDetection = async (videoElement) => {
+  try {
+    const tmResult = await predictFromVideo(videoElement);
+    if (!tmResult?.top) return null;
+
+    const { top, detections, imageWidth, imageHeight } = tmResult;
+    const meta = resolveClassMeta(top.species);
+    if (!meta?.isWildlife) return null;
+
+    return {
+      species: meta.label,
+      speciesKey: String(top.species).toLowerCase(),
+      confidence: top.confidence,
+      threatLevel: meta.threatLevel,
+      description: meta.description,
+      timestamp: new Date().toISOString(),
+      bbox: null,
+      allDetections: detections
+        .map((d) => {
+          const m = resolveClassMeta(d.species);
+          if (!m?.isWildlife) return null;
+          return {
+            classId: null,
+            species: String(d.species).toLowerCase(),
+            label: m.label,
+            confidence: d.confidence,
+            bbox: null,
+          };
+        })
+        .filter(Boolean),
+      imageWidth,
+      imageHeight,
+      inferenceMs: 0,
+      modelName: "TeachableMachine (Image)",
+    };
+  } catch (error) {
+    console.warn("[WildGuard] Teachable Machine inference failed:", error?.message);
+    return null;
+  }
+};
+
 /**
  * Live Monitor entry point.
  *
  * Predicts the species visible in the supplied video element using the
  * backend YOLO model. Returns null when nothing is detected.
  */
-export const predictWildlife = async (videoElement) => {
+export const predictWildlife = async (videoElement, useTeachable = true) => {
   if (!videoElement) {
     return null;
+  }
+  if (useTeachable) {
+    const tm = await runTeachableDetection(videoElement);
+    if (tm) return tm;
+    // fallback to backend if TM fails
   }
   return runDetection(videoElement);
 };

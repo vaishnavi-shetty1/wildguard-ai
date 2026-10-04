@@ -191,7 +191,7 @@ const ClassifierTraining = () => {
               </div>
 
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">
+                <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-emerald-400">
                   AI Model Management
                 </p>
 
@@ -218,7 +218,7 @@ const ClassifierTraining = () => {
               />
 
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <p className="text-[13px] uppercase tracking-wider text-slate-500">
                   Model Status
                 </p>
 
@@ -353,7 +353,7 @@ const ClassifierTraining = () => {
                   className="w-full accent-emerald-500"
                 />
 
-                <div className="mt-2 flex justify-between text-[10px] text-slate-600">
+                <div className="mt-2 flex justify-between text-[13px] text-slate-600">
                   <span>Train</span>
                   <span>
                     Validation {100 - config.datasetSplit}%
@@ -462,7 +462,7 @@ const ClassifierTraining = () => {
                     </span>
                   </p>
 
-                  <p className="text-[10px] uppercase tracking-wider text-slate-600">
+                  <p className="text-[13px] uppercase tracking-wider text-slate-600">
                     Epoch
                   </p>
                 </div>
@@ -470,7 +470,7 @@ const ClassifierTraining = () => {
               </div>
 
               <div className="mt-5">
-                <div className="mb-2 flex justify-between text-[10px] text-slate-500">
+                <div className="mb-2 flex justify-between text-[13px] text-slate-500">
                   <span>Training Progress</span>
                   <span>{progress.toFixed(0)}%</span>
                 </div>
@@ -522,7 +522,7 @@ const ClassifierTraining = () => {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-162.5 text-left">
                   <thead>
-                    <tr className="border-b border-slate-800 bg-slate-900/50 text-[10px] uppercase tracking-wider text-slate-500">
+                    <tr className="border-b border-slate-800 bg-slate-900/50 text-[13px] uppercase tracking-wider text-slate-500">
                       <th className="px-5 py-3">Epoch</th>
                       <th className="px-5 py-3">Loss</th>
                       <th className="px-5 py-3">Accuracy</th>
@@ -627,7 +627,7 @@ const ClassifierTraining = () => {
         </section>
 
         {/* Footer */}
-        <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[10px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[13px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
           <span>WILDGUARD AI • Classifier Training Module</span>
           <span>Model: {modelVersion}</span>
         </div>
@@ -650,7 +650,7 @@ const MetricCard = ({ icon: Icon, label, value, description }) => {
         </div>
       </div>
 
-      <p className="mt-4 text-[10px] uppercase tracking-wider text-slate-500">
+      <p className="mt-4 text-[13px] uppercase tracking-wider text-slate-500">
         {label}
       </p>
 
@@ -693,7 +693,7 @@ const ConfigInput = ({
         className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
       />
 
-      <p className="mt-1 text-[10px] text-slate-600">
+      <p className="mt-1 text-[13px] text-slate-600">
         {description}
       </p>
     </div>
@@ -729,7 +729,7 @@ const MetricPanel = ({
       <div className="mt-5 grid grid-cols-2 gap-3">
 
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <p className="text-[10px] uppercase tracking-wider text-slate-600">
+          <p className="text-[13px] uppercase tracking-wider text-slate-600">
             Training
           </p>
 
@@ -742,7 +742,7 @@ const MetricPanel = ({
         </div>
 
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <p className="text-[10px] uppercase tracking-wider text-slate-600">
+          <p className="text-[13px] uppercase tracking-wider text-slate-600">
             Validation
           </p>
 

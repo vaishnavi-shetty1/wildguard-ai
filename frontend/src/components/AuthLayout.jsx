@@ -22,7 +22,7 @@ const AuthLayout = ({ children, eyebrow, title, description,}) => {
 
           <div>
 
-            <p className="mb-2.5 text-[.72rem] font-bold uppercase tracking-[.18em] text-[#d8f6e9]">
+            <p className="mb-2.5 text-[.85rem] font-bold uppercase tracking-[.18em] text-[#d8f6e9]">
               Wildlife protection dashboard
             </p>
 
@@ -46,7 +46,7 @@ const AuthLayout = ({ children, eyebrow, title, description,}) => {
 
           <div className="mb-5 shrink-0">
 
-            <p className="mb-2 text-[.72rem] font-bold uppercase tracking-[.18em] text-[#7fe6b4]">
+            <p className="mb-2 text-[.85rem] font-bold uppercase tracking-[.18em] text-[#7fe6b4]">
               {eyebrow}
             </p>
 

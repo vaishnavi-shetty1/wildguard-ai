@@ -182,7 +182,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
               <MapPin className="h-5 w-5 text-emerald-400" />
 
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <p className="text-[13px] uppercase tracking-wider text-slate-500">
                   Assigned Location
                 </p>
 
@@ -262,7 +262,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
                   </div>
 
                   <span
-                    className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
+                    className={`rounded-full border px-2 py-1 text-[13px] font-bold ${
                       stat.type === "warning"
                         ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-400"
                         : stat.type === "info"
@@ -337,7 +337,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
                           </h3>
 
                           <span
-                            className={`rounded-full border px-2 py-0.5 text-[9px] font-bold ${getLevelStyle(
+                            className={`rounded-full border px-2 py-0.5 text-[12px] font-bold ${getLevelStyle(
                               alert.level
                             )}`}
                           >
@@ -361,7 +361,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
                     </div>
 
                     <span
-                      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                      className={`rounded-full px-2.5 py-1 text-[13px] font-semibold ${
                         alert.status === "Active"
                           ? "bg-orange-500/10 text-orange-400"
                           : "bg-emerald-500/10 text-emerald-400"
@@ -511,7 +511,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
         </section>
 
         {/* Footer */}
-        <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[10px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[13px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
           <span>WILDGUARD AI • Stakeholder Safety Network</span>
 
           <span>

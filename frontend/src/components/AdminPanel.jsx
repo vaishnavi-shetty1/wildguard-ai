@@ -244,7 +244,7 @@ const AdminPanel = ({ onNotification }) => {
               </div>
 
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">
+                <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-emerald-400">
                   Administrator Console
                 </p>
                 <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">
@@ -260,7 +260,7 @@ const AdminPanel = ({ onNotification }) => {
             <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
               <Lock className="h-4 w-4 text-red-400" />
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                <p className="text-[13px] uppercase tracking-wider text-slate-500">
                   Access Level
                 </p>
                 <p className="text-sm font-bold text-red-400">
@@ -328,7 +328,7 @@ const AdminPanel = ({ onNotification }) => {
             <div className="overflow-x-auto">
               <table className="w-full min-w-225">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[10px] uppercase tracking-wider text-slate-500">
+                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[13px] uppercase tracking-wider text-slate-500">
                     <th className="px-5 py-3">User</th>
                     <th className="px-5 py-3">Role</th>
                     <th className="px-5 py-3">Location</th>
@@ -448,7 +448,7 @@ const AdminPanel = ({ onNotification }) => {
             <div className="overflow-x-auto">
               <table className="w-full min-w-225">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[10px] uppercase tracking-wider text-slate-500">
+                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[13px] uppercase tracking-wider text-slate-500">
                     <th className="px-5 py-3">Timestamp</th>
                     <th className="px-5 py-3">User</th>
                     <th className="px-5 py-3">IP Address</th>
@@ -478,12 +478,12 @@ const AdminPanel = ({ onNotification }) => {
                       </td>
                       <td className="px-5 py-4">
                         {log.isSuspicious ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-[10px] font-bold text-red-400">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-[13px] font-bold text-red-400">
                             <AlertTriangle className="h-3 w-3" />
                             Suspicious
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-400">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[13px] font-bold text-emerald-400">
                             <CheckCircle2 className="h-3 w-3" />
                             Normal
                           </span>
@@ -554,7 +554,7 @@ const AdminPanel = ({ onNotification }) => {
                         Twilio integration status
                       </p>
                     </div>
-                    <span className={`rounded-lg px-2.5 py-1 text-[10px] font-bold ${ smsConfig.twilioConfigured ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border border-yellow-500/20 bg-yellow-500/10 text-yellow-400" }`}>
+                    <span className={`rounded-lg px-2.5 py-1 text-[13px] font-bold ${ smsConfig.twilioConfigured ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border border-yellow-500/20 bg-yellow-500/10 text-yellow-400" }`}>
                       {smsConfig.twilioConfigured ? "CONNECTED" : "SIMULATED"}
                     </span>
                   </div>
@@ -587,7 +587,7 @@ const AdminPanel = ({ onNotification }) => {
         )}
 
         {/* Footer */}
-        <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[10px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[13px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
           <span>
             WILDGUARD AI • Administrator Control Panel
           </span>
@@ -604,7 +604,7 @@ const AdminPanel = ({ onNotification }) => {
           <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#09191d] shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                <p className="text-[13px] font-bold uppercase tracking-wider text-emerald-400">
                   Administration
                 </p>
                 <h2 className="mt-1 text-lg font-bold text-white">
@@ -678,7 +678,7 @@ const StatCard = ({ icon: Icon, label, value, danger = false,}) => {
       <div className={`flex h-9 w-9 items-center justify-center rounded-lg border ${ danger ? "border-red-500/20 bg-red-500/10" : "border-emerald-500/20 bg-emerald-500/10" }`}>
         <Icon className={`h-4 w-4 ${ danger ? "text-red-400" : "text-emerald-400"}`}/>
       </div>
-      <p className="mt-3 text-[10px] uppercase tracking-wider text-slate-600">{label}</p>
+      <p className="mt-3 text-[13px] uppercase tracking-wider text-slate-600">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${ danger ? "text-red-400" : "text-slate-100"}`}> {value}</p>
     </div>
   );
@@ -702,7 +702,7 @@ const RoleBadge = ({ role }) => {
     village_head: "Village Head",
   };
   return (
-    <span className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-slate-300">{labels[role] || role} </span>
+    <span className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-[13px] font-bold text-slate-300">{labels[role] || role} </span>
   );
 };
 

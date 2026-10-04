@@ -390,7 +390,7 @@ useEffect(() => {
 
               </h1>
 
-              <span className="hidden text-[9px] font-mono uppercase tracking-[0.18em] text-slate-500 sm:block">
+              <span className="hidden text-[12px] font-mono uppercase tracking-[0.18em] text-slate-500 sm:block">
                 Wildlife protection and prevention
               </span>
 
@@ -414,7 +414,7 @@ useEffect(() => {
 
               </span>
 
-              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+              <span className="text-[12px] font-bold uppercase tracking-wider text-emerald-400">
                 System Online
               </span>
 
@@ -434,7 +434,7 @@ useEffect(() => {
                 <Bell size={16} />
 
                 {unreadCount > 0 && (
-                  <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-red-500 text-[8px] font-bold leading-none text-white">
+                  <span className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-red-500 text-[11px] font-bold leading-none text-white">
                     {unreadCount}
                   </span>
                 )}
@@ -486,7 +486,7 @@ useEffect(() => {
                       tab.id
                     )
                   }
-                  className={`relative shrink-0 cursor-pointer rounded-md px-3 py-1.5 text-[10px] font-medium transition-all duration-150 sm:text-xs ${
+                  className={`relative shrink-0 cursor-pointer rounded-md px-3 py-1.5 text-[13px] font-medium transition-all duration-150 sm:text-xs ${
                     isActive
                       ? "font-semibold text-slate-100"
                       : "text-slate-400 hover:text-slate-200"
@@ -521,11 +521,11 @@ useEffect(() => {
 
             <div className="hidden flex-col items-end text-right font-mono xl:flex">
 
-              <span className="text-[9px] uppercase tracking-wider text-slate-500">
+              <span className="text-[12px] uppercase tracking-wider text-slate-500">
                 Surveillance UTC Feed
               </span>
 
-              <span className="text-[10px] font-medium text-slate-300">
+              <span className="text-[13px] font-medium text-slate-300">
                 {time ||
                   "0000-00-00 00:00:00 UTC"}
               </span>
@@ -545,7 +545,7 @@ useEffect(() => {
                       className="text-slate-500"
                     />
 
-                    <span className="max-w-42.5 truncate text-[10px] text-slate-400">
+                    <span className="max-w-42.5 truncate text-[13px] text-slate-400">
                       {
                         currentUser.locationName
                       }
@@ -568,7 +568,7 @@ useEffect(() => {
                   <Bell size={15} />
 
                   {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 grid size-4 animate-pulse place-items-center rounded-full bg-red-500 text-[8px] font-bold leading-none text-white">
+                    <span className="absolute -right-1.5 -top-1.5 grid size-5 animate-pulse place-items-center rounded-full bg-red-500 text-[11px] font-bold leading-none text-white">
                       {unreadCount}
                     </span>
                   )}
@@ -602,14 +602,14 @@ useEffect(() => {
 
                     <div className="hidden max-w-30 sm:block">
 
-                      <p className="truncate text-[11px] font-semibold leading-tight text-slate-200">
+                      <p className="truncate text-[14px] font-semibold leading-tight text-slate-200">
                         {
                           currentUser.username
                         }
                       </p>
 
                       <p
-                        className={`truncate text-[8px] uppercase tracking-wider ${getRoleColor()}`}
+                        className={`truncate text-[11px] uppercase tracking-wider ${getRoleColor()}`}
                       >
                         {getRoleBadge()}
                       </p>
@@ -689,7 +689,7 @@ useEffect(() => {
                                 </p>
 
                                 <p
-                                  className={`text-[9px] uppercase tracking-wider ${getRoleColor()}`}
+                                  className={`text-[12px] uppercase tracking-wider ${getRoleColor()}`}
                                 >
                                   {
                                     getRoleName()
@@ -704,11 +704,11 @@ useEffect(() => {
 
                               <div>
 
-                                <p className="text-[9px] uppercase tracking-wider text-slate-500">
+                                <p className="text-[12px] uppercase tracking-wider text-slate-500">
                                   Email
                                 </p>
 
-                                <p className="truncate text-[10px] text-slate-300">
+                                <p className="truncate text-[13px] text-slate-300">
                                   {
                                     currentUser.email
                                   }
@@ -719,11 +719,11 @@ useEffect(() => {
                               {currentUser.phone && (
                                 <div>
 
-                                  <p className="text-[9px] uppercase tracking-wider text-slate-500">
+                                  <p className="text-[12px] uppercase tracking-wider text-slate-500">
                                     Mobile
                                   </p>
 
-                                  <p className="text-[10px] text-slate-300">
+                                  <p className="text-[13px] text-slate-300">
                                     {
                                       currentUser.phone
                                     }
@@ -735,11 +735,11 @@ useEffect(() => {
                               {currentUser.locationName && (
                                 <div>
 
-                                  <p className="text-[9px] uppercase tracking-wider text-slate-500">
+                                  <p className="text-[12px] uppercase tracking-wider text-slate-500">
                                     Assigned Sector
                                   </p>
 
-                                  <p className="truncate text-[10px] text-slate-300">
+                                  <p className="truncate text-[13px] text-slate-300">
                                     {
                                       currentUser.locationName
                                     }
@@ -765,12 +765,12 @@ useEffect(() => {
 
                               <div>
 
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">
                                   Access Level
                                 </p>
 
                                 <p
-                                  className={`text-[10px] font-semibold ${getRoleColor()}`}
+                                  className={`text-[13px] font-semibold ${getRoleColor()}`}
                                 >
                                   {
                                     getRoleName()
@@ -840,21 +840,21 @@ useEffect(() => {
             <div className="flex min-w-0 items-center gap-2">
 
               <div
-                className={`grid size-7 shrink-0 place-items-center rounded-full border bg-white/5 text-[10px] font-bold ${getRoleColor()} border-current/20`}
+                className={`grid size-8 shrink-0 place-items-center rounded-full border bg-white/5 text-[13px] font-bold ${getRoleColor()} border-current/20`}
               >
                 {userInitial}
               </div>
 
               <div className="min-w-0">
 
-                <p className="truncate text-[10px] font-semibold text-slate-200">
+                <p className="truncate text-[13px] font-semibold text-slate-200">
                   {
                     currentUser.username
                   }
                 </p>
 
                 <p
-                  className={`text-[8px] uppercase tracking-wider ${getRoleColor()}`}
+                  className={`text-[11px] uppercase tracking-wider ${getRoleColor()}`}
                 >
                   {getRoleBadge()}
                 </p>
@@ -865,7 +865,7 @@ useEffect(() => {
 
             <div className="flex items-center gap-2">
 
-              <span className="font-mono text-[8px] text-slate-500">
+              <span className="font-mono text-[11px] text-slate-500">
                 {time}
               </span>
 

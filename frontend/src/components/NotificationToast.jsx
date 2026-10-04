@@ -104,7 +104,7 @@ const NotificationToast = ({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              <p className="text-[13px] font-bold uppercase tracking-[0.16em] text-slate-500">
                 {notification.type === "ai"
                   ? "AI Wildlife Detection"
                   : "WildGuard Alert"}
@@ -130,7 +130,7 @@ const NotificationToast = ({
 
           {confidencePct !== null && (
             <div className="mt-3 flex items-center gap-2">
-              <span className="text-[9px] uppercase tracking-wider text-slate-500">
+              <span className="text-[12px] uppercase tracking-wider text-slate-500">
                 Confidence
               </span>
 
@@ -143,14 +143,14 @@ const NotificationToast = ({
                 />
               </div>
 
-              <span className="text-[10px] font-bold text-emerald-400">
+              <span className="text-[13px] font-bold text-emerald-400">
                 {confidencePct}%
               </span>
             </div>
           )}
 
           {notification.location && (
-            <p className="mt-2 text-[10px] text-slate-500">
+            <p className="mt-2 text-[13px] text-slate-500">
               Location:{" "}
               <span className="text-slate-400">
                 {notification.location}
@@ -158,7 +158,7 @@ const NotificationToast = ({
             </p>
           )}
 
-          <div className="mt-2 text-[9px] font-mono text-slate-600">
+          <div className="mt-2 text-[12px] font-mono text-slate-600">
             {notification.time || "NOW"}
           </div>
         </div>

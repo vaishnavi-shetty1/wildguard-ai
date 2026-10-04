@@ -1,18 +1,29 @@
-import os
+"""backend/app/notifications.py
+
+Outbound alert delivery — currently stubbed out.
+
+The Twilio SMS transport was removed so the project carries no third-party
+messaging dependency. Every alert path still runs and still records what it
+*would* have sent, so detection ingestion, SMS history, and the dashboard
+keep working unchanged; nothing leaves the machine.
+
+`send_sms_alerts` keeps its original signature and return contract so the
+caller in `routes.py` needs no change and re-enabling real delivery later
+is a matter of restoring a sender here.
+
+To restore SMS later: reinstall `twilio`, read credentials from
+TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER /
+ALERT_RECIPIENTS, and replace the body of `send_sms_alerts` with the real
+send loop. `build_alert_message` is the payload it should use.
+"""
+
 import logging
 from typing import Optional
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioRestException
 
 logger = logging.getLogger(__name__)
 
 
-def _recipients() -> list[str]:
-    raw = os.getenv("ALERT_RECIPIENTS", "")
-    return [r.strip() for r in raw.split(",") if r.strip()]
-
-
-def _build_message(
+def build_alert_message(
     species: str,
     confidence: float,
     latitude: Optional[float],
@@ -21,6 +32,7 @@ def _build_message(
     device_id: str,
     detection_id: int,
 ) -> str:
+    """Render the alert text. Used for logs and for any future sender."""
     pct = round(confidence * 100, 1)
     location = (
         f"GPS: {latitude:.5f}, {longitude:.5f}"
@@ -48,38 +60,16 @@ def send_sms_alerts(
     detection_id: int,
 ) -> tuple[bool, Optional[str]]:
     """
-    Send SMS alerts to all configured recipients.
+    No-op stand-in for the removed SMS sender.
 
-    Returns (success: bool, error_message: str | None).
+    Returns (sent=False, error=None) so detections are stored with
+    `sms_sent = False` and no error state. The message is still rendered and
+    logged so an alert path stays auditable.
     """
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
-    from_number = os.getenv("TWILIO_FROM_NUMBER", "")
-    recipients = _recipients()
-
-    if not all([account_sid, auth_token, from_number]):
-        logger.warning("Twilio credentials not configured — SMS skipped.")
-        return False, "Twilio credentials not set"
-
-    if not recipients:
-        logger.warning("No ALERT_RECIPIENTS configured — SMS skipped.")
-        return False, "No recipients configured"
-
-    body = _build_message(
+    message = build_alert_message(
         species, confidence, latitude, longitude, gps_fix, device_id, detection_id
     )
-
-    client = Client(account_sid, auth_token)
-    errors: list[str] = []
-
-    for number in recipients:
-        try:
-            msg = client.messages.create(body=body, from_=from_number, to=number)
-            logger.info("SMS sent to %s — SID: %s", number, msg.sid)
-        except TwilioRestException as exc:
-            logger.error("SMS failed for %s: %s", number, exc)
-            errors.append(f"{number}: {exc.msg}")
-
-    if errors:
-        return False, "; ".join(errors)
-    return True, None
+    logger.info(
+        "SMS delivery is disabled (Twilio removed); alert not sent.\n%s", message
+    )
+    return False, None

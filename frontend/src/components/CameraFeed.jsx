@@ -165,26 +165,26 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
 
           <div>
             <h3 className="text-sm font-bold text-slate-100">{title}</h3>
-            <p className="text-[10px] uppercase tracking-wider text-slate-600">{location}</p>
+            <p className="text-[13px] uppercase tracking-wider text-slate-600">{location}</p>
           </div>
         </div>
 
         {/* Status */}
         <div className="flex items-center gap-2">
           {cameraStatus === "active" && (
-            <span className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[10px] font-bold text-red-400">
+            <span className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[13px] font-bold text-red-400">
               <Circle className="h-2 w-2 fill-current" />LIVE
             </span>
           )}
 
           {cameraStatus === "starting" && (
-            <span className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-bold text-yellow-400">
+            <span className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-1 text-[13px] font-bold text-yellow-400">
               STARTING
             </span>
           )}
 
           {cameraStatus === "idle" && (
-            <span className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-slate-500">
+            <span className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-[13px] font-bold text-slate-500">
               OFFLINE
             </span>
           )}
@@ -226,18 +226,18 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
           <>
             <div className="absolute left-3 top-3 flex items-center gap-2 rounded-lg border border-black/30 bg-black/50 px-2.5 py-1.5 backdrop-blur-sm">
               <Circle className="h-2 w-2 fill-red-500 text-red-500" />
-              <span className="text-[10px] font-bold tracking-wider text-white">
+              <span className="text-[13px] font-bold tracking-wider text-white">
                 LIVE SURVEILLANCE
               </span>
             </div>
             <div className="absolute bottom-3 left-3 rounded-lg border border-black/30 bg-black/50 px-2.5 py-1.5 backdrop-blur-sm">
-              <p className="font-mono text-[10px] text-slate-200">
+              <p className="font-mono text-[13px] text-slate-200">
                 {new Date().toLocaleString()}
               </p>
             </div>
             <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-950/70 px-2.5 py-1.5 backdrop-blur-sm">
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="text-[10px] font-semibold text-emerald-300">
+              <span className="text-[13px] font-semibold text-emerald-300">
                 MONITORED
               </span>
             </div>
@@ -252,7 +252,7 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
             <p className="text-xs font-semibold text-slate-300">
               Surveillance Camera
             </p>
-            <p className="mt-1 text-[10px] text-slate-600">
+            <p className="mt-1 text-[13px] text-slate-600">
               Camera access is controlled by your browser.
             </p>
           </div>

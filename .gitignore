@@ -1,0 +1,6 @@
+.env.example
+AGENTS.md
+.xgrok
+backend/.env
+backend/.env.example
+backend/ venv

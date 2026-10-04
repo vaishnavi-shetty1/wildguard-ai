@@ -665,7 +665,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div className="flex flex-wrap items-center gap-2">
 
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[12px] font-bold uppercase tracking-wider text-emerald-400">
 
                 <Smartphone
                   size={10}
@@ -675,7 +675,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
               </span>
 
-              <span className="rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[9px] uppercase tracking-wider text-slate-500">
+              <span className="rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[12px] uppercase tracking-wider text-slate-500">
                 {roleLabel}
               </span>
 
@@ -703,7 +703,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
             onClick={
               sendEmergencySOS
             }
-            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-[10px] font-bold text-red-400 transition hover:bg-red-500/20"
+            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-[13px] font-bold text-red-400 transition hover:bg-red-500/20"
           >
             <ShieldAlert
               size={14}
@@ -836,7 +836,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                     Compose Message
                   </h2>
 
-                  <p className="text-[9px] text-slate-600">
+                  <p className="text-[12px] text-slate-600">
                     Create and dispatch
                     a notification.
                   </p>
@@ -854,7 +854,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
               <div>
 
-                <label className="mb-2 block text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+                <label className="mb-2 block text-[12px] font-semibold uppercase tracking-wider text-slate-500">
                   Message Type
                 </label>
 
@@ -929,11 +929,11 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <div className="mb-2 flex items-center justify-between">
 
-                  <label className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+                  <label className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
                     Message
                   </label>
 
-                  <span className="text-[9px] text-slate-600">
+                  <span className="text-[12px] text-slate-600">
                     {message.length}
                     /160
                   </span>
@@ -965,7 +965,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                   onClick={
                     resetComposer
                   }
-                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-[10px] font-semibold text-slate-400 transition hover:bg-slate-800"
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-4 py-2.5 text-[13px] font-semibold text-slate-400 transition hover:bg-slate-800"
                 >
                   <RefreshCw
                     size={12}
@@ -983,7 +983,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                   onClick={
                     sendSms
                   }
-                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-[10px] font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-[13px] font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
 
                   {sending ? (
@@ -1029,14 +1029,14 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                     Recipients
                   </h2>
 
-                  <p className="mt-1 text-[9px] text-slate-600">
+                  <p className="mt-1 text-[12px] text-slate-600">
                     Select who receives
                     this message.
                   </p>
 
                 </div>
 
-                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[9px] font-bold text-emerald-400">
+                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[12px] font-bold text-emerald-400">
                   {
                     selectedRecipients.length
                   } selected
@@ -1066,7 +1066,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                     )
                   }
                   placeholder="Search recipients..."
-                  className="w-full rounded-lg border border-slate-800 bg-slate-900 py-2 pl-9 pr-3 text-[10px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-emerald-500/40"
+                  className="w-full rounded-lg border border-slate-800 bg-slate-900 py-2 pl-9 pr-3 text-[13px] text-slate-300 outline-none placeholder:text-slate-700 focus:border-emerald-500/40"
                 />
 
               </div>
@@ -1087,7 +1087,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                       event.target.value
                     )
                   }
-                  className="w-full cursor-pointer rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-[10px] text-slate-400 outline-none"
+                  className="w-full cursor-pointer rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-[13px] text-slate-400 outline-none"
                 >
 
                   <option value="all">
@@ -1122,7 +1122,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                 onClick={
                   selectAllRecipients
                 }
-                className="mt-3 flex w-full cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-[9px] font-semibold text-slate-400 transition hover:bg-slate-900"
+                className="mt-3 flex w-full cursor-pointer items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-[12px] font-semibold text-slate-400 transition hover:bg-slate-900"
               >
 
                 <span>
@@ -1186,13 +1186,13 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                         <div className="min-w-0 flex-1">
 
-                          <p className="truncate text-[10px] font-semibold text-slate-300">
+                          <p className="truncate text-[13px] font-semibold text-slate-300">
                             {
                               recipient.name
                             }
                           </p>
 
-                          <p className="mt-0.5 truncate text-[8px] text-slate-600">
+                          <p className="mt-0.5 truncate text-[11px] text-slate-600">
                             {
                               recipient.phone
                             }
@@ -1242,7 +1242,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
               </h2>
 
-              <p className="mt-1 text-[9px] text-slate-600">
+              <p className="mt-1 text-[12px] text-slate-600">
                 Complete record of
                 dispatched notifications.
               </p>
@@ -1261,7 +1261,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                     event.target.value
                   )
                 }
-                className="cursor-pointer rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-[10px] text-slate-400 outline-none"
+                className="cursor-pointer rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-[13px] text-slate-400 outline-none"
               >
 
                 <option value="all">
@@ -1299,23 +1299,23 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <tr className="border-b border-slate-900 text-left">
 
-                  <th className="px-4 py-3 text-[8px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
                     Recipient
                   </th>
 
-                  <th className="px-4 py-3 text-[8px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
                     Message
                   </th>
 
-                  <th className="px-4 py-3 text-[8px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
                     Type
                   </th>
 
-                  <th className="px-4 py-3 text-[8px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
                     Status
                   </th>
 
-                  <th className="px-4 py-3 text-[8px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
                     Time
                   </th>
 
@@ -1345,13 +1345,13 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                           <div>
 
-                            <p className="text-[10px] font-semibold text-slate-300">
+                            <p className="text-[13px] font-semibold text-slate-300">
                               {
                                 log.recipientName
                               }
                             </p>
 
-                            <p className="text-[8px] text-slate-600">
+                            <p className="text-[11px] text-slate-600">
                               {
                                 log.recipientPhone
                               }
@@ -1366,7 +1366,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                       <td className="max-w-90 px-4 py-3">
 
-                        <p className="truncate text-[10px] text-slate-400">
+                        <p className="truncate text-[13px] text-slate-400">
                           {
                             log.message
                           }
@@ -1377,7 +1377,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                       <td className="px-4 py-3">
 
-                        <span className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-[8px] capitalize text-slate-500">
+                        <span className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-[11px] capitalize text-slate-500">
                           {log.triggerType.replace(
                             "_",
                             " "
@@ -1400,7 +1400,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                       <td className="px-4 py-3">
 
-                        <span className="text-[9px] text-slate-600">
+                        <span className="text-[12px] text-slate-600">
                           {formatTime(
                             log.timestamp
                           )}
@@ -1444,7 +1444,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
               </h2>
 
-              <p className="mt-1 text-[9px] text-slate-600">
+              <p className="mt-1 text-[12px] text-slate-600">
                 Configure automatic alert
                 notifications and gateway
                 settings.
@@ -1454,7 +1454,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
             <button
               type="button"
               onClick={saveSmsConfig}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-bold text-emerald-400 transition hover:bg-emerald-500/20"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[13px] font-bold text-emerald-400 transition hover:bg-emerald-500/20"
             >
               <Save size={13} />
               Save Settings
@@ -1477,7 +1477,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                     Automatic Alerts
                   </p>
 
-                  <p className="mt-1 max-w-sm text-[9px] leading-4 text-slate-600">
+                  <p className="mt-1 max-w-sm text-[12px] leading-4 text-slate-600">
                     Automatically dispatch
                     SMS when AI detects a
                     configured wildlife
@@ -1510,7 +1510,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
 
-              <label className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+              <label className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
                 Sender Name
               </label>
 
@@ -1537,7 +1537,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
 
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
                 Automatic Alert Levels
               </p>
 
@@ -1580,7 +1580,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                             })
                           )
                         }
-                        className={`cursor-pointer rounded-lg border px-3 py-2 text-[9px] font-bold transition ${
+                        className={`cursor-pointer rounded-lg border px-3 py-2 text-[12px] font-bold transition ${
                           active
                             ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                             : "border-slate-800 bg-slate-900 text-slate-600"
@@ -1601,7 +1601,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
 
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
                 Monitored Species
               </p>
 
@@ -1645,7 +1645,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                             })
                           )
                         }
-                        className={`cursor-pointer rounded-lg border px-3 py-2 text-[9px] transition ${
+                        className={`cursor-pointer rounded-lg border px-3 py-2 text-[12px] transition ${
                           active
                             ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                             : "border-slate-800 bg-slate-900 text-slate-600"
@@ -1688,7 +1688,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                       SMS Gateway
                     </p>
 
-                    <p className="mt-1 text-[9px] text-slate-600">
+                    <p className="mt-1 text-[12px] text-slate-600">
                       {smsConfig.twilioConfigured
                         ? "Twilio gateway is configured and ready."
                         : "Gateway is in simulation mode. Configure Twilio for real SMS delivery."}
@@ -1700,7 +1700,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
 
                 <span
-                  className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[9px] font-bold ${
+                  className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold ${
                     smsConfig.twilioConfigured
                       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                       : "border-amber-500/20 bg-amber-500/10 text-amber-400"
@@ -1746,7 +1746,7 @@ const SmsStat = ({
 
         <div>
 
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
             {label}
           </p>
 
@@ -1762,7 +1762,7 @@ const SmsStat = ({
 
       </div>
 
-      <p className="mt-2 text-[9px] text-slate-600">
+      <p className="mt-2 text-[12px] text-slate-600">
         {description}
       </p>
 
@@ -1785,7 +1785,7 @@ const SmsTab = ({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-[10px] font-semibold transition ${
+      className={`inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-[13px] font-semibold transition ${
         active
           ? "bg-slate-800 text-slate-100"
           : "text-slate-500 hover:text-slate-300"
@@ -1812,7 +1812,7 @@ const TriggerButton = ({
     <button
       type="button"
       onClick={onClick}
-      className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2.5 text-[9px] font-semibold transition ${
+      className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2.5 text-[12px] font-semibold transition ${
         active
           ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
           : "border-slate-800 bg-slate-900 text-slate-500 hover:text-slate-300"
@@ -1872,7 +1872,7 @@ const SmsStatus = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[8px] font-bold ${current.className}`}
+      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-bold ${current.className}`}
     >
       <Icon size={9} />
       {current.label}

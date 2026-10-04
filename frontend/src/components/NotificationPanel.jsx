@@ -17,7 +17,7 @@ const NotificationPanel = ({
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <div>
             <h3 className="text-sm font-bold text-slate-100">System Notifications</h3>
-            <p className="text-[10px] text-slate-500">WildGuard Operations Feed </p>
+            <p className="text-[13px] text-slate-500">WildGuard Operations Feed </p>
           </div>
 
           <button type="button" onClick={onClose} className="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-800 hover:text-slate-100">
@@ -59,7 +59,7 @@ const NotificationPanel = ({
                       )}
                     </div>
 
-                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                    <p className="mt-1 text-[14px] leading-5 text-slate-500">
                       {notification.message}
                     </p>
                   </div>

@@ -25,7 +25,7 @@ Jetson Nano: USB camera → frames → preprocessing → TensorRT → NMS → bo
 | Area | Status |
 |---|---|
 | React dashboard | Implemented: authentication, roles, browser-camera UI, notifications, detection history, SMS/admin screens. |
-| FastAPI backend | Implemented: event ingestion, SQLite, JWT users, WebSockets, SMS logs, optional Twilio detection alerts, YOLO inference endpoint (`POST /api/v1/ai/predict`). |
+| FastAPI backend | Implemented: event ingestion, SQLite, JWT users, WebSockets, local alert logs, YOLO inference endpoint (`POST /api/v1/ai/predict`). Outbound SMS is currently disabled. |
 | Browser classifier | Real YOLO inference: browser captures a frame and calls the backend, which runs the bundled `yolo11n.pt` checkpoint (see `backend/app/ai/detector.py`). |
 | YOLO11n training, dataset validation, ONNX export | Required; not in this repository yet. |
 | TensorRT engine and Jetson camera/tracker/GPIO code | Required; not in this repository yet. |
@@ -204,7 +204,9 @@ frontend/  React 19 + Vite + Tailwind dashboard
 backend/   FastAPI + async SQLAlchemy API
 ```
 
-The backend can receive confirmed Jetson events through `POST /api/v1/detections` using `X-Api-Key`. It validates species/confidence/GPS, stores the event, broadcasts `new_detection` through `WS /api/v1/ws/live`, and can use Twilio for device-originated alerts. It also exposes detection history/stats, JWT authentication, users, SMS configuration/logs, SOS, and system logs.
+The backend can receive confirmed Jetson events through `POST /api/v1/detections` using `X-Api-Key`. It validates species/confidence/GPS, stores the event, and broadcasts `new_detection` through `WS /api/v1/ws/live`. It also exposes detection history/stats, JWT authentication, users, SMS configuration/logs, SOS, and system logs.
+
+Outbound SMS is currently disabled: the `twilio` dependency and its sender were removed so the project carries no third-party messaging library. `send_sms_alerts` in `backend/app/notifications.py` is a no-op that still renders and logs the alert text, so detection ingestion, the SMS history UI, and the log schema are unchanged and every broadcast is recorded with status `simulated`. Restoring delivery means reinstalling `twilio` and replacing that one function body; the call site needs no change.
 
 The backend already persists species, confidence, camera/device ID, time, location, optional thumbnail, lifecycle state, and SMS result. A future Jetson `logger.py` should submit confirmed detections with a stable device ID.
 
@@ -247,11 +249,9 @@ DATABASE_URL=sqlite+aiosqlite:///./wildguard.db
 API_SECRET_KEY=replace-with-a-long-device-secret
 JWT_SECRET_KEY=replace-with-a-long-random-jwt-secret
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_FROM_NUMBER=+15551234567
-ALERT_RECIPIENTS=+919876543210,+919876543211
 ```
+
+`backend/app/database.py` calls `load_dotenv()`, so a `backend/.env` is picked up automatically at import. The dashboard authenticates with a dashboard JWT, so none of these are required to use the UI — they only matter for device/Jetson clients calling `/detections` with `X-Api-Key`, and for signing those JWTs. If `backend/.env` is absent, `API_SECRET_KEY` falls back to the literal `change_me`, which must not be used outside local development.
 
 The Jetson integration must use the same `API_SECRET_KEY` and a `BACKEND_URL`. Keep this device key separate from dashboard JWT credentials.
 

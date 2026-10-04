@@ -341,7 +341,7 @@ const sightings =
 
             <div className="mb-3 flex flex-wrap items-center gap-2">
 
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[12px] font-bold uppercase tracking-wider text-emerald-400">
 
                 <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
 
@@ -349,7 +349,7 @@ const sightings =
 
               </span>
 
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[9px] uppercase tracking-wider text-slate-500">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[12px] uppercase tracking-wider text-slate-500">
 
                 <MapPin size={10} />
 
@@ -372,7 +372,7 @@ const sightings =
               {roleDescription}
             </p>
 
-            <div className="mt-4 flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
+            <div className="mt-4 flex items-center gap-2 text-[13px] uppercase tracking-wider text-slate-500">
 
               <Shield size={12} className="text-emerald-400" />
 
@@ -407,7 +407,7 @@ const sightings =
 
                 <div>
 
-                  <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
                     {stat.label}
                   </p>
 
@@ -425,7 +425,7 @@ const sightings =
 
               </div>
 
-              <p className="mt-2 text-[10px] text-slate-500">
+              <p className="mt-2 text-[13px] text-slate-500">
                 {stat.description}
               </p>
 
@@ -459,7 +459,7 @@ const sightings =
                   Recent Wildlife Activity
                 </h3>
 
-                <p className="text-[9px] text-slate-500">
+                <p className="text-[12px] text-slate-500">
                   Latest AI and sensor detections
                 </p>
 
@@ -467,7 +467,7 @@ const sightings =
 
             </div>
 
-            <span className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
+            <span className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
               Live Feed
             </span>
 
@@ -528,7 +528,7 @@ const sightings =
                     </p>
 
                     <span
-                      className={`rounded border px-1.5 py-0.5 text-[7px] font-bold ${getAlertClass(
+                      className={`rounded border px-1.5 py-0.5 text-[11px] font-bold ${getAlertClass(
                         sighting.level
                       )}`}
                     >
@@ -537,7 +537,7 @@ const sightings =
 
                   </div>
 
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] text-slate-500">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
 
                     <span className="flex items-center gap-1">
                       <MapPin size={9} />
@@ -558,7 +558,7 @@ const sightings =
 
                 <div className="shrink-0 text-right">
 
-                  <p className="text-[9px] text-slate-500">
+                  <p className="text-[12px] text-slate-500">
                     {sighting.time}
                   </p>
 
@@ -577,7 +577,7 @@ const sightings =
 
             <button
               type="button"
-              className="flex cursor-pointer items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-emerald-400 transition hover:text-emerald-300"
+              className="flex cursor-pointer items-center gap-1 text-[12px] font-semibold uppercase tracking-wider text-emerald-400 transition hover:text-emerald-300"
               onClick={()=>navigate("/detections",{
                 state: {
                   detections : detectionLogs.length > 0 ? detectionLogs : demoSightings,
@@ -611,7 +611,7 @@ const sightings =
                   Network Status
                 </h3>
 
-                <p className="text-[9px] text-slate-500">
+                <p className="text-[12px] text-slate-500">
                   Protected zone infrastructure
                 </p>
 
@@ -673,7 +673,7 @@ const sightings =
 
               <div>
 
-                <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+                <p className="text-[12px] font-bold uppercase tracking-wider text-emerald-400">
                   Protection Network
                 </p>
 
@@ -768,14 +768,14 @@ const StatusRow = ({
 
         </span>
 
-        <span className="truncate text-[10px] text-slate-400">
+        <span className="truncate text-[13px] text-slate-400">
           {label}
         </span>
 
       </div>
 
       <span
-        className={`ml-2 shrink-0 text-[9px] font-semibold ${
+        className={`ml-2 shrink-0 text-[12px] font-semibold ${
           online
             ? "text-emerald-400"
             : "text-red-400"
@@ -810,7 +810,7 @@ const InfoCard = ({
         {title}
       </h3>
 
-      <p className="mt-1.5 text-[10px] leading-5 text-slate-500">
+      <p className="mt-1.5 text-[13px] leading-5 text-slate-500">
         {description}
       </p>
 

@@ -151,7 +151,7 @@ const DetectionsPAge = () => {
                 Wildlife Detections
               </h1>
 
-              <p className="text-[10px] uppercase tracking-wider text-slate-500">
+              <p className="text-[13px] uppercase tracking-wider text-slate-500">
                 Complete AI detection history
               </p>
             </div>
@@ -172,7 +172,7 @@ const DetectionsPAge = () => {
         </div>
 
         {loadError && (
-          <div className="border-t border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[11px] text-amber-300">
+          <div className="border-t border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[14px] text-amber-300">
             Backend unavailable — showing last known data. ({loadError})
           </div>
         )}
@@ -208,7 +208,7 @@ const DetectionsPAge = () => {
                   Detection History
                 </h3>
 
-                <p className="text-[10px] text-slate-500">
+                <p className="text-[13px] text-slate-500">
                   Latest wildlife classification events
                 </p>
               </div>
@@ -254,7 +254,7 @@ const DetectionsPAge = () => {
                       </h3>
 
                       <span
-                        className={`rounded border px-2 py-0.5 text-[8px] font-bold uppercase ${getLevelClass(
+                        className={`rounded border px-2 py-0.5 text-[11px] font-bold uppercase ${getLevelClass(
                           detection.level
                         )}`}
                       >
@@ -263,7 +263,7 @@ const DetectionsPAge = () => {
 
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-slate-500">
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-slate-500">
 
                       <span className="flex items-center gap-1">
                         <MapPin size={10} />
@@ -283,7 +283,7 @@ const DetectionsPAge = () => {
 
                   <div className="min-w-[100px]">
 
-                    <p className="text-[8px] font-semibold uppercase tracking-wider text-slate-600">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
                       AI Confidence
                     </p>
 
@@ -297,11 +297,11 @@ const DetectionsPAge = () => {
 
                   <div className="min-w-[130px] text-left md:text-right">
 
-                    <p className="text-[9px] text-slate-400">
+                    <p className="text-[12px] text-slate-400">
                       {detection.date}
                     </p>
 
-                    <p className="mt-1 text-[9px] text-slate-600">
+                    <p className="mt-1 text-[12px] text-slate-600">
                       {detection.time}
                     </p>
 

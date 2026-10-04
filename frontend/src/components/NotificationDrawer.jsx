@@ -83,7 +83,7 @@ const NotificationDrawer = ({
               System Notifications
             </h2>
 
-            <p className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-500">
+            <p className="mt-0.5 text-[13px] uppercase tracking-wider text-slate-500">
               WildGuard Operations Feed
             </p>
 
@@ -104,7 +104,7 @@ const NotificationDrawer = ({
         {notifications.length > 0 && (
           <div className="flex items-center justify-between border-b border-slate-900 px-5 py-2.5">
 
-            <span className="text-[10px] text-slate-500">
+            <span className="text-[13px] text-slate-500">
               {notifications.length} notification
               {notifications.length !== 1
                 ? "s"
@@ -114,7 +114,7 @@ const NotificationDrawer = ({
             <button
               type="button"
               onClick={onClearAll}
-              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-medium text-slate-500 transition hover:bg-red-500/10 hover:text-red-400"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-medium text-slate-500 transition hover:bg-red-500/10 hover:text-red-400"
             >
               <Trash2 size={12} />
               Clear all
@@ -194,20 +194,20 @@ const NotificationDrawer = ({
 
                       </div>
 
-                      <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      <p className="mt-1 text-[14px] leading-5 text-slate-500">
                         {notification.message}
                       </p>
 
                       <div className="mt-2 flex flex-wrap gap-2">
 
                         {notification.location && (
-                          <span className="rounded-md bg-slate-900 px-1.5 py-1 text-[9px] text-slate-500">
+                          <span className="rounded-md bg-slate-900 px-1.5 py-1 text-[12px] text-slate-500">
                             {notification.location}
                           </span>
                         )}
 
                         {notification.alertLevel && (
-                          <span className="rounded-md bg-red-500/10 px-1.5 py-1 text-[9px] font-semibold text-red-400">
+                          <span className="rounded-md bg-red-500/10 px-1.5 py-1 text-[12px] font-semibold text-red-400">
                             {notification.alertLevel}
                           </span>
                         )}
@@ -215,7 +215,7 @@ const NotificationDrawer = ({
                       </div>
 
                       {notification.timestamp && (
-                        <p className="mt-2 font-mono text-[9px] text-slate-600">
+                        <p className="mt-2 font-mono text-[12px] text-slate-600">
                           {notification.timestamp}
                         </p>
                       )}

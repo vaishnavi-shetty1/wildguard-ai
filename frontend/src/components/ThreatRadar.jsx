@@ -48,7 +48,7 @@ const ThreatRadar = ({ currentUser }) => {
             </div>
 
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">
+              <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-emerald-400">
                 Community Safety
               </p>
 
@@ -66,7 +66,7 @@ const ThreatRadar = ({ currentUser }) => {
 
             <div className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
 
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-[13px] font-bold uppercase tracking-wider text-slate-400">
               Surveillance Active
             </span>
           </div>
@@ -79,7 +79,7 @@ const ThreatRadar = ({ currentUser }) => {
         <MapPin className="h-4 w-4 text-emerald-400" />
 
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-600">
+          <p className="text-[12px] font-bold uppercase tracking-wider text-slate-600">
             Registered Location
           </p>
 
