@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
-import {Camera,CameraOff,Circle,RefreshCw,ShieldCheck,AlertTriangle,} from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {Camera,CameraOff,Circle,RefreshCw,ShieldCheck,AlertTriangle,Cloud,Cpu,} from "lucide-react";
 import { runDetection } from "../utils/detectionModel";
+import { useRoboflowStream } from "../hooks/useRoboflowStream";
 
 const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showControls = true,onDetection,}) => {
 
@@ -18,6 +19,67 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
   const [cameraStatus, setCameraStatus] = useState("idle");
   const [cameraError, setCameraError] = useState("");
   const [isDetecting, setIsDetecting] = useState(false);
+  /*
+   * Kept in state as well as a ref so the Roboflow session gets a stable
+   * MediaStream to attach to and restarts only when the camera changes.
+   */
+  const [cameraStream, setCameraStream] = useState(null);
+  /*
+   * Inference provider: "local" polls the backend YOLO checkpoint,
+   * "roboflow" streams to a hosted workflow over WebRTC.
+   */
+  const [provider, setProvider] = useState("local");
+  const isCloudProvider = provider === "roboflow";
+
+  const toDetection = useCallback(
+    (result) =>
+      result
+        ? {
+            label: result.species,
+            speciesKey: result.speciesKey,
+            confidence: result.confidence,
+            alertLevel: result.threatLevel,
+            description: result.description,
+            timestamp: result.timestamp,
+            location,
+          }
+        : {
+            label: "No Threat",
+            speciesKey: "none",
+            confidence: 0,
+            alertLevel: "LOW",
+            description: "No wildlife detected.",
+            timestamp: new Date().toISOString(),
+            location,
+          },
+    [location],
+  );
+
+  /*
+   * Roboflow WebRTC session: reuses the camera MediaStream, swaps the
+   * video source to the annotated stream the workflow returns, and
+   * reports predictions through the same onDetection contract as the
+   * local path.
+   */
+  const handleCloudPrediction = useCallback(
+    (result) => {
+      onDetection?.(toDetection(result));
+    },
+    [onDetection, toDetection],
+  );
+
+  const handleCloudRemoteStream = useCallback((remoteStream) => {
+    if (!videoRef.current) return;
+    videoRef.current.srcObject = remoteStream;
+    videoRef.current.play().catch(() => {});
+  }, []);
+
+  const roboflow = useRoboflowStream({
+    enabled: isCloudProvider && isDetecting && cameraStatus === "active",
+    source: cameraStream,
+    onPrediction: handleCloudPrediction,
+    onRemoteStream: handleCloudRemoteStream,
+  });
 
   const startCamera = async () => {
     setCameraError("");
@@ -35,6 +97,7 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
         audio: false,
       });
       streamRef.current = stream;
+      setCameraStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -60,6 +123,7 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
       });
       streamRef.current = null;
     }
+    setCameraStream(null);
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -73,6 +137,15 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
     }
 
     setIsDetecting(true);
+
+    /*
+      Cloud inference needs no polling loop: useRoboflowStream opens one
+      WebRTC session and reports on each processed frame.
+     */
+
+    if (isCloudProvider) {
+      return;
+    }
 
     /*
       Runs scans through the WildGuard detection model: frames are
@@ -90,28 +163,8 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
       try {
         const result = await runDetection(videoRef.current);
 
-        const detection = result
-          ? {
-              label: result.species,
-              speciesKey: result.speciesKey,
-              confidence: result.confidence,
-              alertLevel: result.threatLevel,
-              description: result.description,
-              timestamp: result.timestamp,
-              location,
-            }
-          : {
-              label: "No Threat",
-              speciesKey: "none",
-              confidence: 0,
-              alertLevel: "LOW",
-              description: "No wildlife detected.",
-              timestamp: new Date().toISOString(),
-              location,
-            };
-
         if (onDetection) {
-          onDetection(detection);
+          onDetection(toDetection(result));
         }
       } catch (error) {
         console.error("Detection error:", error);
@@ -148,6 +201,24 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
       stopCamera();
     };
   }, []);
+
+  /*
+   * Put the raw camera feed back on the <video> element once the cloud
+   * session releases it, so switching to Local YOLO shows live video
+   * again.
+   */
+  useEffect(() => {
+    if (isCloudProvider || cameraStatus !== "active") {
+      return;
+    }
+
+    const stream = streamRef.current;
+
+    if (videoRef.current && stream && videoRef.current.srcObject !== stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [isCloudProvider, cameraStatus]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80 shadow-xl">
@@ -186,6 +257,14 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
           {cameraStatus === "idle" && (
             <span className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1 text-[13px] font-bold text-slate-500">
               OFFLINE
+            </span>
+          )}
+
+          {/* ROBOFLOW CLOUD STATUS */}
+          {isCloudProvider && cameraStatus === "active" && isDetecting && (
+            <span className="flex items-center gap-1.5 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[13px] font-bold text-sky-300">
+              <Cloud className="h-3 w-3" />
+              {roboflow.isStreaming ? "CLOUD" : "CONNECTING"}
             </span>
           )}
 
@@ -245,6 +324,16 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
         )}
       </div>
 
+      {/* ROBOFLOW STREAM ERROR */}
+      {isCloudProvider && roboflow.error && (
+        <div className="flex items-start gap-2 border-t border-amber-500/20 bg-amber-500/5 p-4">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <p className="text-xs leading-5 text-amber-300">
+            {roboflow.error}
+          </p>
+        </div>
+      )}
+
       {/* Controls */}
       {showControls && (
         <div className="flex flex-col gap-3 border-t border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -257,7 +346,33 @@ const CameraFeed = ({title = "Live Camera Feed",location = "Local Camera",showCo
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* INFERENCE PROVIDER */}
+            {cameraStatus === "active" && roboflow.supported && (
+              <div className="flex items-center rounded-xl border border-slate-800 bg-slate-900 p-1">
+                {[
+                  { id: "local", label: "Local YOLO", icon: Cpu },
+                  { id: "roboflow", label: "Roboflow", icon: Cloud },
+                ].map((option) => {
+                  const isActiveProvider = provider === option.id;
+                  const Icon = option.icon;
+
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setProvider(option.id)}
+                      aria-pressed={isActiveProvider}
+                      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold transition ${ isActiveProvider ? "bg-emerald-500 text-emerald-950" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {cameraStatus !== "active" ? (
               <button type="button" onClick={startCamera} disabled={cameraStatus === "starting"} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50">
                 {cameraStatus === "starting" ? (

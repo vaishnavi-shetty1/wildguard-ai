@@ -12,9 +12,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  Cloud,
+  Cpu,
 } from "lucide-react";
 
 import { predictWildlife, getModelInfo } from "../utils/wildlifeDetection";
+import { useRoboflowStream } from "../hooks/useRoboflowStream";
 
 const SPECIES_COLORS = {
     elephant: "#f59e0b",
@@ -52,6 +55,27 @@ const LiveMonitor = ({
     useState("");
 
   /*
+   * Inference provider.
+   *
+   * "local" polls the backend YOLO checkpoint on an interval;
+   * "roboflow" holds one WebRTC session open against a Roboflow
+   * Workflow and receives the annotated stream plus per-frame
+   * predictions. Both feed the same prediction contract.
+   */
+
+  const [provider, setProvider] =
+    useState("local");
+
+  const isCloudProvider = provider === "roboflow";
+
+  /*
+   * Cloud predictions arrive pre-annotated, so the local overlay would
+   * draw a second set of boxes on top of the workflow's.
+   */
+
+  const showLocalOverlay = !isCloudProvider;
+
+  /*
    * Which checkpoint the backend actually loaded, and which of the target
    * species it cannot emit. A checkpoint that lacks `tiger`/`leopard`
    * reports nothing for those animals, which otherwise looks identical to
@@ -68,6 +92,62 @@ const LiveMonitor = ({
    * so requests queue up and an older frame can resolve after a newer one.
    */
   const scanInFlightRef = useRef(false);
+
+  /*
+   * Roboflow WebRTC session.
+   *
+   * Enabled only while cloud scanning is on and the camera is live.
+   * The hook reuses the camera MediaStream already owned by
+   * cameraState, so the camera is never opened twice, and swaps the
+   * <video> source to the annotated stream Roboflow sends back.
+   */
+
+  const handleCloudPrediction = useCallback(
+    (result) => {
+      /*
+       * Empty cloud frames are ignored here so the card keeps showing
+       * the last real detection, matching local polling behaviour.
+       */
+
+      if (!result) return;
+
+      setPrediction(result);
+
+      /*
+       * Send prediction to HomePage, which turns it into a
+       * WildGuard notification.
+       */
+
+      if (onPrediction) {
+        onPrediction(result);
+      }
+    },
+    [onPrediction],
+  );
+
+  const handleCloudRemoteStream = useCallback(
+    (remoteStream) => {
+      const video = videoRef.current;
+
+      if (!video) return;
+
+      video.srcObject = remoteStream;
+      video.play().catch(() => {});
+    },
+    [],
+  );
+
+  const roboflow = useRoboflowStream({
+    enabled:
+      isCloudProvider &&
+      isScanning &&
+      Boolean(cameraState?.isActive),
+    source: cameraState?.stream || null,
+    onPrediction: handleCloudPrediction,
+    onRemoteStream: handleCloudRemoteStream,
+  });
+
+  const roboflowSupported = roboflow.supported;
 
   // --------------------------------------------------
   // BOUNDING-BOX OVERLAY
@@ -307,6 +387,15 @@ const LiveMonitor = ({
     setIsScanning(true);
 
     /*
+     * Cloud inference needs no polling: the WebRTC session started by
+     * useRoboflowStream pushes predictions as frames are processed.
+     */
+
+    if (isCloudProvider) {
+      return;
+    }
+
+    /*
      * Run AI prediction every 3 seconds.
      *
      * Do NOT run the model on every video frame
@@ -353,23 +442,52 @@ const LiveMonitor = ({
     };
   }, []);
 
+  /*
+   * Switching providers must not leave a stale session or a live
+   * interval behind, and the local preview has to come back when the
+   * cloud stream stops owning the <video> element.
+   */
+
+  useEffect(() => {
+    if (isCloudProvider) {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+      return;
+    }
+
+    setIsScanning(false);
+
+    const video = videoRef.current;
+    if (video && cameraState?.stream) {
+      video.srcObject = cameraState.stream;
+      video.play().catch(() => {});
+    }
+    // Runs on provider switches only; the stream itself is handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCloudProvider]);
+
   // --------------------------------------------------
   // CONNECT EXISTING STREAM
   // --------------------------------------------------
 
   useEffect(() => {
     if (
-      videoRef.current &&
-      cameraState?.stream
+      isCloudProvider ||
+      !videoRef.current ||
+      !cameraState?.stream
     ) {
-      videoRef.current.srcObject =
-        cameraState.stream;
-
-      videoRef.current
-        .play()
-        .catch(() => {});
+      return;
     }
-  }, [cameraState?.stream]);
+
+    videoRef.current.srcObject =
+      cameraState.stream;
+
+    videoRef.current
+      .play()
+      .catch(() => {});
+  }, [cameraState?.stream, isCloudProvider]);
 
   // --------------------------------------------------
   // DRAW / CLEAR BOUNDING BOXES
@@ -377,8 +495,20 @@ const LiveMonitor = ({
 
   useEffect(() => {
     predictionRef.current = prediction;
+
+    if (!showLocalOverlay) {
+      const canvas = canvasRef.current;
+      canvas?.getContext("2d")?.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      return;
+    }
+
     drawDetections();
-  }, [prediction, drawDetections]);
+  }, [prediction, drawDetections, showLocalOverlay]);
 
   useEffect(() => {
     const onResize = () => drawDetections();
@@ -426,10 +556,12 @@ const LiveMonitor = ({
           />
 
           {/* YOLO bounding boxes */}
-          <canvas
-            ref={canvasRef}
-            className="pointer-events-none absolute inset-0 h-full w-full"
-          />
+          {showLocalOverlay && (
+            <canvas
+              ref={canvasRef}
+              className="pointer-events-none absolute inset-0 h-full w-full"
+            />
+          )}
 
           {!cameraState?.isActive && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950">
@@ -486,12 +618,60 @@ const LiveMonitor = ({
 
             <p className="text-[13px] text-slate-500">
               {isScanning
-                ? "AI scanning active"
+                ? isCloudProvider
+                  ? roboflow.status === "streaming"
+                    ? "Roboflow cloud stream active"
+                    : "Connecting to Roboflow..."
+                  : "AI scanning active"
                 : "AI scanning paused"}
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+
+            {/* INFERENCE PROVIDER */}
+
+            {cameraState?.isActive && roboflowSupported && (
+              <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900 p-1">
+                {[
+                  {
+                    id: "local",
+                    label: "Local YOLO",
+                    icon: Cpu,
+                  },
+                  {
+                    id: "roboflow",
+                    label: "Roboflow",
+                    icon: Cloud,
+                  },
+                ].map((option) => {
+                  const isActiveProvider =
+                    provider === option.id;
+                  const Icon = option.icon;
+
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() =>
+                        setProvider(option.id)
+                      }
+                      aria-pressed={
+                        isActiveProvider
+                      }
+                      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                        isActiveProvider
+                          ? "bg-emerald-500 text-emerald-950"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <Icon size={13} />
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {cameraState?.isActive && (
               <button
@@ -553,9 +733,32 @@ const LiveMonitor = ({
         </div>
       )}
 
+      {/* ROBOFLOW STREAM ERROR */}
+
+      {roboflow.error && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+
+          <Cloud
+            size={18}
+            className="mt-0.5 shrink-0 text-amber-400"
+          />
+
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-amber-300">
+              Roboflow stream failed
+            </p>
+
+            <p className="mt-1 text-[13px] leading-4 text-amber-200/70">
+              {roboflow.error}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* MODEL CAPABILITY WARNING */}
 
-      {modelInfo &&
+      {!isCloudProvider &&
+        modelInfo &&
         modelInfo.missing_target_species
           .length > 0 && (
           <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
