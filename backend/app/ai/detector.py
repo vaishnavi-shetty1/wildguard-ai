@@ -20,6 +20,9 @@ import numpy as np
 import cv2
 from ultralytics import YOLO
 
+from backend.app.ai.species_classifier import available as species_model_available
+from backend.app.ai.species_classifier import classify_crop_bgr
+
 MODEL_DIR = Path(__file__).resolve().parent / "models"
 DEFAULT_MODEL_PATH = str(MODEL_DIR / "yolo11n.pt")
 DEFAULT_IMGSZ = 640
@@ -156,6 +159,34 @@ def run_detection(
         if ok:
             image_b64 = base64.b64encode(buf.tobytes()).decode()
 
+        for idx in order:
+            box = [round(float(v), 1) for v in xyxy[idx]]
+            x1, y1, x2, y2 = map(int, box)
+            h, w = image_bgr.shape[:2]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+
+            species = names[int(cls[idx])]
+            confidence = round(float(confs[idx]), 4)
+            class_id = int(cls[idx])
+
+            # Second stage: force elephant / tiger / leopard on the crop
+            if species_model_available() and x2 > x1 and y2 > y1:
+                crop = image_bgr[y1:y2, x1:x2]
+                refined = classify_crop_bgr(crop)
+                species = refined["species"]
+                confidence = refined["confidence"]
+                class_id = ["elephant", "tiger", "leopard"].index(species)
+
+            detections.append(
+                {
+                    "class_id": class_id,
+                    "species": species,
+                    "confidence": confidence,
+                    "bbox": box,
+                }
+            )
+
     return {
         "model": get_model_name(),
         "imgsz": DEFAULT_IMGSZ,
@@ -167,3 +198,4 @@ def run_detection(
         "image_height": height,
         "image_b64": image_b64,
     }
+
