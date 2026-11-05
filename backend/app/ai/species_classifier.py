@@ -52,7 +52,7 @@ def classify_crop_bgr(crop_bgr: np.ndarray) -> dict:
     rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
     rgb = cv2.resize(rgb, (INPUT_SIZE, INPUT_SIZE), interpolation=cv2.INTER_LINEAR)
     x = rgb.astype(np.float32) / 255.0
-    x = np.transpose(x, (2, 0, 1))[None]  # [1,3,128,128]
+    x = np.transpose(x, (2, 0, 1))[None]  
 
     logits = sess.run(None, {"images": x})[0][0]
     logits = logits - logits.max()

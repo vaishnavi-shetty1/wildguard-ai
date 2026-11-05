@@ -438,7 +438,7 @@ const sightings =
 
       {/* MAIN GRID */}
 
-      <section className="grid gap-5 lg:grid-cols-[1.4fr_.8fr]">
+      <section className="grid gap-5">
 
 
         {/* RECENT SIGHTINGS */}
@@ -592,109 +592,12 @@ const sightings =
 
         </div>
 
-
-        {/* SYSTEM STATUS */}
-
-        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60">
-
-          <div className="border-b border-slate-800 px-4 py-3">
-
-            <div className="flex items-center gap-2">
-
-              <div className="grid size-8 place-items-center rounded-lg bg-emerald-500/10 text-emerald-400">
-                <Radio size={15} />
-              </div>
-
-              <div>
-
-                <h3 className="text-xs font-bold text-slate-200">
-                  Network Status
-                </h3>
-
-                <p className="text-[12px] text-slate-500">
-                  Protected zone infrastructure
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
-
-          <div className="space-y-1 p-3">
-
-            <StatusRow
-              label="IoT Sensor Network"
-              value="Online"
-              status="online"
-            />
-
-            <StatusRow
-              label="AI Detection Engine"
-              value="Online"
-              status="online"
-            />
-
-            <StatusRow
-              label="SMS Gateway"
-              value="Operational"
-              status="online"
-            />
-
-            <StatusRow
-              label="Camera Surveillance"
-              value="18 / 18"
-              status="online"
-            />
-
-            <StatusRow
-              label="Emergency SOS"
-              value="Ready"
-              status="online"
-            />
-
-          </div>
-
-
-          {/* SAFETY STATUS */}
-
-          <div className="m-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-
-            <div className="flex items-center gap-3">
-
-              <div className="grid size-9 place-items-center rounded-full bg-emerald-500/10 text-emerald-400">
-
-                <CheckCircle2
-                  size={18}
-                />
-
-              </div>
-
-              <div>
-
-                <p className="text-[12px] font-bold uppercase tracking-wider text-emerald-400">
-                  Protection Network
-                </p>
-
-                <p className="mt-0.5 text-sm font-semibold text-slate-200">
-                  All core systems operational
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
       </section>
 
 
       {/* OPERATIONAL INFORMATION */}
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 
         <InfoCard
           icon={Bell}
@@ -714,7 +617,7 @@ const sightings =
           description="WildGuard combines AI classification, IoT sensors, and stakeholder communication."
         />
 
-      </section>
+      </section> */}
 
             {/* ALL DETECTION LOGS */}
 
@@ -724,65 +627,6 @@ const sightings =
     onClose={() => setShowAllDetections(false)}
   />
 )}
-
-    </div>
-  );
-};
-
-
-
-//status row
-
-const StatusRow = ({
-  label,
-  value,
-  status,
-}) => {
-  const online =
-    status === "online";
-
-  return (
-    <div className="flex items-center justify-between rounded-lg px-3 py-2.5 transition hover:bg-slate-900">
-
-      <div className="flex min-w-0 items-center gap-2">
-
-        <span
-          className={`relative flex size-2 shrink-0`}
-        >
-
-          <span
-            className={`absolute inline-flex size-full rounded-full ${
-              online
-                ? "animate-ping bg-emerald-400 opacity-50"
-                : "bg-red-400"
-            }`}
-          />
-
-          <span
-            className={`relative inline-flex size-2 rounded-full ${
-              online
-                ? "bg-emerald-400"
-                : "bg-red-400"
-            }`}
-          />
-
-        </span>
-
-        <span className="truncate text-[13px] text-slate-400">
-          {label}
-        </span>
-
-      </div>
-
-      <span
-        className={`ml-2 shrink-0 text-[12px] font-semibold ${
-          online
-            ? "text-emerald-400"
-            : "text-red-400"
-        }`}
-      >
-        {value}
-      </span>
 
     </div>
   );

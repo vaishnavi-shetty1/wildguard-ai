@@ -31,8 +31,6 @@ async function request(path, options = {}) {
   return res.json();
 }
 
-// ── Authentication ────────────────────────────────────────────────────────────
-
 export function loginUser({ email, password }) {
   return request("/auth/login", {
     method: "POST",
@@ -50,8 +48,6 @@ export function registerUser(payload) {
 export function getCurrentUser() {
   return request("/auth/me");
 }
-
-// ── User management ───────────────────────────────────────────────────────────
 
 export function fetchUsers() {
   return request("/users");
@@ -76,8 +72,6 @@ export function deleteUser(id) {
     method: "DELETE",
   });
 }
-
-// ── SMS ───────────────────────────────────────────────────────────────────────
 
 export function getSmsConfig() {
   return request("/sms/config");
@@ -106,8 +100,6 @@ export function fetchSmsLogs(params = {}) {
   return request(`/sms/logs${q ? `?${q}` : ""}`);
 }
 
-// ── Alerts / SOS ──────────────────────────────────────────────────────────────
-
 export function sendSos(payload) {
   return request("/alerts/sos", {
     method: "POST",
@@ -115,13 +107,9 @@ export function sendSos(payload) {
   });
 }
 
-// ── System logs ───────────────────────────────────────────────────────────────
-
 export function fetchSystemLogs(limit = 100) {
   return request(`/logs?limit=${limit}`);
 }
-
-// ── AI inference ─────────────────────────────────────────────────────────────
 
 export function predictImage({
   image,
@@ -145,8 +133,6 @@ export function predictImage({
 export function fetchModelInfo() {
   return request("/ai/model");
 }
-
-// ── Detections / stats ────────────────────────────────────────────────────────
 
 export function fetchDetections({ species, device_id, from_dt, to_dt, limit = 100, offset = 0 } = {}) {
   const params = new URLSearchParams();
@@ -228,8 +214,6 @@ export function getThreatLevel(species, confidence) {
   if (confidence >= 0.6) return "MEDIUM";
   return "LOW";
 }
-
-// ── User mapping ──────────────────────────────────────────────────────────────
 
 export function mapBackendUser(u) {
   return {

@@ -8,7 +8,6 @@ import SmsCenter from "../components/SmsCenter";
 import StakeholderPortal from "../components/StakeholderPortal";
 import ClassifierTraining from "../components/ClassifierTraining";
 import AdminPanel from "../components/AdminPanel";
-import ThreatRadar from "../components/ThreatRadar";
 import DetectionLogs from "../components/DetectionLogs";
 import NotificationToast from "../components/NotificationToast";
 import NotificationDrawer from "../components/NotificationDrawer";
@@ -29,7 +28,7 @@ const ROLE_TABS = {
     "home",
     "dashboard",
     "sms",
-    "training",
+    "admin",
   ],
   landowner: [
     "home",
@@ -370,20 +369,8 @@ const HomePage = () => {
 
     //dashboard
     if ( activeTab === "dashboard" ) {
-      //admin, operator -- live monitor
-      if ( currentUser.role === "admin" || currentUser.role === "operator" ) {
-        return (
-          <LiveMonitor currentUser={currentUser} cameraState={cameraState} setCameraState={setCameraState} onNotification={addNotification} onPrediction={onWildlifePrediction}/>
-        );
-      }
-      //landowner , village head -- threat radar
-      if ( currentUser.role === "landowner" || currentUser.role === "village_head" ) {
-        return (
-          <ThreatRadar currentUser={currentUser} cameraState={cameraState} setCameraState={setCameraState} onNotification={addNotification} onPrediction={onWildlifePrediction}/>
-        );
-      }
       return (
-        <AccessDenied role={currentUser.role}/>
+        <LiveMonitor currentUser={currentUser} cameraState={cameraState} setCameraState={setCameraState} onNotification={addNotification} onPrediction={onWildlifePrediction}/>
       );
     }
 
@@ -408,7 +395,7 @@ const HomePage = () => {
 
     //classifier training
     if ( activeTab === "training" ) {
-      if ( currentUser.role !== "admin" && currentUser.role !== "operator" ) {
+      if ( currentUser.role !== "admin" ) {
         return (
           <AccessDenied role={currentUser.role}/>
         );
@@ -420,7 +407,7 @@ const HomePage = () => {
 
     //admin panel
     if ( activeTab === "admin" ) {
-      if ( currentUser.role !== "admin" ) {
+      if ( currentUser.role !== "admin" && currentUser.role !== "operator" ) {
         return (
           <AccessDenied role={currentUser.role}/>
         );

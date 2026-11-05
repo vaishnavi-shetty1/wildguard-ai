@@ -402,10 +402,10 @@ async def get_me(current_user: User = Depends(get_current_user)) -> UserOut:
 
 # ── User management routes (admin) ─────────────────────────────────────────────
 
-@users_router.get("", response_model=list[UserOut], summary="List all users (admin)")
+@users_router.get("", response_model=list[UserOut], summary="List all users (admin/operator)")
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "operator")),
 ) -> list[UserOut]:
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     return [UserOut.model_validate(u) for u in result.scalars().all()]
@@ -684,11 +684,11 @@ async def send_sos(
 
 # ── System activity logs ───────────────────────────────────────────────────────
 
-@logs_router.get("", response_model=list[SystemLogOut], summary="List system activity logs (admin)")
+@logs_router.get("", response_model=list[SystemLogOut], summary="List system activity logs (admin/operator)")
 async def list_system_logs(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "operator")),
 ) -> list[SystemLogOut]:
     stmt = select(SystemLog).order_by(SystemLog.timestamp.desc()).limit(limit)
     result = await db.execute(stmt)

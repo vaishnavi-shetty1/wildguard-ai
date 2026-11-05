@@ -1,15 +1,3 @@
-"""backend/app/ai/detector.py
-
-YOLO inference service backed by an Ultralytics checkpoint.
-
-The model file (`models/yolo11n.pt`) is loaded lazily on the first
-inference request (not at import/startup) and cached so a single
-process keeps one model in memory. Override the checkpoint via the
-`WILDLIFE_MODEL_PATH` environment variable to swap in a trained
-three-class checkpoint (`0=elephant, 1=tiger, 2=leopard`) later;
-everything downstream reads `model.names`, so it works automatically.
-"""
-
 import base64
 import os
 import threading
@@ -27,9 +15,6 @@ MODEL_DIR = Path(__file__).resolve().parent / "models"
 DEFAULT_MODEL_PATH = str(MODEL_DIR / "yolo11n.pt")
 DEFAULT_IMGSZ = 640
 
-# The three species this project is deployed to detect. A checkpoint only
-# reports the classes it was trained on, so the dashboard needs to know which
-# of these the loaded checkpoint can actually produce.
 TARGET_SPECIES = ("elephant", "tiger", "leopard")
 
 _lock = threading.Lock()
@@ -58,14 +43,6 @@ def _load_model() -> YOLO:
 
 
 def get_model_info() -> dict:
-    """Describe the checkpoint currently backing inference.
-
-    Loads the model on first call (same lazy cache as inference) so the
-    dashboard can report which classes the checkpoint can actually emit and
-    which of `TARGET_SPECIES` it is missing. Without this, swapping in a
-    checkpoint that lacks `tiger`/`leopard` looks identical to "no animal
-    in frame" on the dashboard.
-    """
     model = _load_model()
     names = model.names
 
@@ -90,7 +67,6 @@ def get_model_info() -> dict:
 
 
 def decode_image_b64(data: str) -> np.ndarray:
-    """Decode a base64 image string (optionally a `data:` URI) into a BGR ndarray."""
     if not data:
         raise ValueError("Image data is empty")
     encoded = data.strip()
@@ -114,10 +90,9 @@ def run_detection(
     max_detections: int = 20,
     draw: bool = False,
 ) -> dict:
-    """Run YOLO inference on a BGR image and return a serialisable result dict."""
+
     model = _load_model()
     names = model.names
-
     start = time.perf_counter()
     results = model.predict(
         image_bgr,
@@ -170,7 +145,6 @@ def run_detection(
             confidence = round(float(confs[idx]), 4)
             class_id = int(cls[idx])
 
-            # Second stage: force elephant / tiger / leopard on the crop
             if species_model_available() and x2 > x1 and y2 > y1:
                 crop = image_bgr[y1:y2, x1:x2]
                 refined = classify_crop_bgr(crop)

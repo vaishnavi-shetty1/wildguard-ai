@@ -195,7 +195,7 @@ useEffect(() => {
         },
         {
           id: "dashboard",
-          label: "Threat Radar",
+          label: "Live Monitor",
         },
       ];
     }
@@ -221,7 +221,7 @@ useEffect(() => {
         },
         {
           id: "dashboard",
-          label: "Threat Radar",
+          label: "Live Monitor",
         },
       ];
     }
@@ -246,8 +246,8 @@ useEffect(() => {
           label: "SMS Center",
         },
         {
-          id: "training",
-          label: "Classifier Training",
+          id: "admin",
+          label: "Control Panel",
         },
       ];
     }

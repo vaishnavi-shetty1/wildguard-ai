@@ -41,7 +41,8 @@ const initialLogs = [
   },
 ];
 
-const AdminPanel = ({ onNotification }) => {
+const AdminPanel = ({ currentUser, onNotification }) => {
+  const canManageUsers = currentUser?.role === "admin";
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState(initialLogs);
@@ -245,7 +246,7 @@ const AdminPanel = ({ onNotification }) => {
 
               <div>
                 <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-emerald-400">
-                  Administrator Console
+                  {canManageUsers ? "Administrator Console" : "Operator Console"}
                 </p>
                 <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">
                   Control Panel
@@ -264,7 +265,7 @@ const AdminPanel = ({ onNotification }) => {
                   Access Level
                 </p>
                 <p className="text-sm font-bold text-red-400">
-                  Administrator
+                  {canManageUsers ? "Administrator" : "Operator"}
                 </p>
               </div>
             </div>
@@ -302,9 +303,15 @@ const AdminPanel = ({ onNotification }) => {
                 </p>
               </div>
 
-              <button type="button" onClick={openAddUser} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-emerald-400">
-                <Plus className="h-4 w-4" />Add User
-              </button>
+              {canManageUsers ? (
+                <button type="button" onClick={openAddUser} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-emerald-400">
+                  <Plus className="h-4 w-4" />Add User
+                </button>
+              ) : (
+                <span className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-400">
+                  View only
+                </span>
+              )}
             </div>
 
             {/* Filters */}
@@ -397,22 +404,32 @@ const AdminPanel = ({ onNotification }) => {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
 
-                          <button type="button" onClick={() => openEditUser(user)} title="Edit user" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:border-emerald-500/30 hover:text-emerald-400">
-                            <Edit3 className="h-3.5 w-3.5" />
-                          </button>
+                          {canManageUsers ? (
+                            <>
 
-                          <button type="button" onClick={() =>toggleUserStatus(user)} title={ user.isActive ? "Deactivate" : "Activate" }
-                            className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:text-yellow-400">
-                            {user.isActive ? (
-                              <UserX className="h-3.5 w-3.5" />
-                            ) : (
-                              <UserCheck className="h-3.5 w-3.5" />
-                            )}
-                          </button>
+                              <button type="button" onClick={() => openEditUser(user)} title="Edit user" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:border-emerald-500/30 hover:text-emerald-400">
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
 
-                          <button type="button" onClick={() => deleteUser(user.id)} title="Delete user" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:text-red-400">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                              <button type="button" onClick={() =>toggleUserStatus(user)} title={ user.isActive ? "Deactivate" : "Activate" }
+                                className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:text-yellow-400">
+                                {user.isActive ? (
+                                  <UserX className="h-3.5 w-3.5" />
+                                ) : (
+                                  <UserCheck className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+
+                              <button type="button" onClick={() => deleteUser(user.id)} title="Delete user" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:text-red-400">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+
+                            </>
+                          ) : (
+                            <span className="text-[12px] text-slate-600">
+                              View only
+                            </span>
+                          )}
 
                         </div>
                       </td>

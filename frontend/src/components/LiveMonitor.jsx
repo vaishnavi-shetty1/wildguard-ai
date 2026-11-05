@@ -799,7 +799,7 @@ const LiveMonitor = ({
 
           <div>
             <h3 className="text-sm font-bold text-slate-100">
-              Latest AI Prediction
+              Latest Prediction
             </h3>
 
             <p className="text-[13px] text-slate-500">
