@@ -1,8 +1,8 @@
 .env.example
 AGENTS.md
 .xgrok
+.freebuff
 backend/.env
 backend/.env.example
 backend/ venv
 backend/ venv311
-.freebuff

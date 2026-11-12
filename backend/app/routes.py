@@ -1,23 +1,30 @@
 import asyncio
+import hashlib
 import os
 import json
 import logging
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, delete
 
-from .database import Detection, User, SmsLog, SmsConfig, SystemLog, get_db
+from .database import (
+    Detection, User, SmsLog, SmsConfig, SystemLog, Notification, PasswordResetToken, get_db,
+)
 from .schemas import (
     DetectionCreate, DetectionOut, DetectionUpdate, DetectionAck,
     UserCreate, UserLogin, UserUpdate, UserOut, Token,
     SmsSendRequest, SmsLogOut, SmsConfigOut, SmsConfigUpdate,
     SosRequest, SosOut, SystemLogOut,
+    NotificationCreate, NotificationOut,
+    PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse,
     AIPredictRequest, AIPredictResponse, AIModelInfoOut,
 )
 from .notifications import send_sms_alerts
+from .emailer import send_password_reset_email, is_email_configured
 from .websocket_manager import manager
 from .auth import (
     hash_password, verify_password, create_access_token,
@@ -32,6 +39,21 @@ sms_router = APIRouter(prefix="/sms", tags=["SMS"])
 alerts_router = APIRouter(prefix="/alerts", tags=["Alerts"])
 logs_router = APIRouter(prefix="/logs", tags=["System Logs"])
 ai_router = APIRouter(prefix="/ai", tags=["AI Inference"])
+notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", "30"))
+
+
+def _threat_level(species: str, confidence: float) -> str:
+    """Same scale the dashboard uses so alert levels stay consistent."""
+    if species in {"unknown", "no threat"}:
+        return "LOW"
+    if confidence >= 0.85:
+        return "HIGH"
+    if confidence >= 0.6:
+        return "MEDIUM"
+    return "LOW"
 
 
 def _parse_json(value: Optional[str], default: list) -> list:
@@ -119,6 +141,37 @@ async def create_detection(
     detection.sms_sent = sms_ok
     detection.sms_error = sms_err
     await db.commit()
+
+    # Save a notification for every active user so alerts survive a logout
+    try:
+        created_at = detected_at
+        if created_at.tzinfo is not None:
+            created_at = created_at.astimezone(timezone.utc)
+
+        result = await db.execute(select(User).where(User.is_active == True))  # noqa: E712
+        recipients = result.scalars().all()
+        db.add_all(
+            [
+                Notification(
+                    user_id=recipient.id,
+                    client_id=f"ws-{detection.id}",
+                    title="Wildlife Detected",
+                    message=(
+                        f"{detection.species} identified by AI "
+                        f"(confidence {round(detection.confidence * 100)}%)."
+                    ),
+                    type="threat",
+                    location=detection.device_id,
+                    alert_level=_threat_level(detection.species, detection.confidence),
+                    created_at=created_at,
+                )
+                for recipient in recipients
+            ]
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.warning("Could not save detection notifications", exc_info=True)
 
     # Broadcast to all connected dashboard WebSocket clients
     await manager.broadcast({
@@ -400,6 +453,133 @@ async def get_me(current_user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(current_user)
 
 
+def _hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite hands back naive datetimes even for timezone-aware columns."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+@auth_router.post(
+    "/forgot-password",
+    response_model=PasswordResetResponse,
+    summary="Email a password reset link",
+)
+async def forgot_password(
+    payload: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PasswordResetResponse:
+    """Always answers the same way so the endpoint can't be used to probe for accounts."""
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        return PasswordResetResponse(
+            status="ok",
+            message="If an account exists for that address, a reset link is on its way.",
+        )
+
+    # Earlier unused links stay valid until they expire. Deleting them here
+    # meant asking for a second link silently killed the email already in the
+    # inbox, so users saw "invalid or has expired" for a link that looked new.
+    token = secrets.token_urlsafe(32)
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=_hash_reset_token(token),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+    logger.warning("DEBUG-RESET-LINK %s", reset_url)  # temporary diagnostic
+    delivered = await send_password_reset_email(
+        user.email, user.username, reset_url, RESET_TOKEN_EXPIRE_MINUTES
+    )
+
+    await _log_system_event(
+        db,
+        user.username,
+        "Password Reset Requested",
+        f"Reset link emailed to {user.email}" if delivered else f"Reset email not sent to {user.email} (email not configured)",
+    )
+
+    if delivered:
+        return PasswordResetResponse(
+            status="ok",
+            message="If an account exists for that address, a reset link is on its way.",
+        )
+
+    message = "If an account exists for that address, a reset link is on its way."
+    shown_url = None
+    if not is_email_configured() and os.getenv("APP_ENV", "development") != "production":
+        message = "Email delivery isn't configured yet, so here is your reset link."
+        shown_url = reset_url
+    return PasswordResetResponse(status="ok", message=message, reset_url=shown_url)
+
+
+@auth_router.post(
+    "/reset-password",
+    response_model=PasswordResetResponse,
+    summary="Set a new password with a reset link",
+)
+async def reset_password(
+    payload: PasswordResetConfirm,
+    db: AsyncSession = Depends(get_db),
+) -> PasswordResetResponse:
+    result = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == _hash_reset_token(payload.token.strip())
+        )
+    )
+    reset = result.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+
+    if reset is not None and reset.used_at is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="This reset link has already been used. Request a new one.",
+        )
+    if reset is None or _as_utc(reset.expires_at) <= now:
+        raise HTTPException(
+            status_code=400,
+            detail="This reset link is invalid or has expired. Request a new one.",
+        )
+
+    user = (
+        await db.execute(select(User).where(User.id == reset.user_id))
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=400,
+            detail="This reset link is invalid or has expired. Request a new one.",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="This account is inactive. Please contact an administrator.",
+        )
+
+    user.hashed_password = hash_password(payload.password)
+    reset.used_at = now
+    await db.execute(
+        delete(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.id != reset.id,
+        )
+    )
+    await db.commit()
+
+    await _log_system_event(db, user.username, "Password Reset", f"{user.email} set a new password")
+    return PasswordResetResponse(
+        status="ok",
+        message="Password updated. You can sign in with your new password.",
+    )
+
+
 # ── User management routes (admin) ─────────────────────────────────────────────
 
 @users_router.get("", response_model=list[UserOut], summary="List all users (admin/operator)")
@@ -411,12 +591,18 @@ async def list_users(
     return [UserOut.model_validate(u) for u in result.scalars().all()]
 
 
-@users_router.post("", response_model=UserOut, status_code=201, summary="Create a user (admin)")
+@users_router.post("", response_model=UserOut, status_code=201, summary="Create a user (admin/operator)")
 async def create_user(
     payload: UserCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "operator")),
 ) -> UserOut:
+    if payload.role == "admin" and current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only an administrator can create another administrator",
+        )
+
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="An account with this email already exists")
@@ -429,6 +615,7 @@ async def create_user(
         phone=payload.phone,
         location_name=payload.location_name,
         sms_alerts_enabled=payload.sms_alerts_enabled,
+        created_by=current_user.id,
     )
     db.add(user)
     await db.commit()
@@ -458,17 +645,29 @@ async def get_user(
     return UserOut.model_validate(user)
 
 
-@users_router.put("/{user_id}", response_model=UserOut, summary="Update a user (admin)")
+@users_router.put("/{user_id}", response_model=UserOut, summary="Update a user (admin, or operator for users they created)")
 async def update_user(
     user_id: int,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin", "operator")),
 ) -> UserOut:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user.role != "admin":
+        if user.created_by != current_user.id or user.role == "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="You can only manage the users you created",
+            )
+        if payload.role == "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Only an administrator can grant administrator access",
+            )
 
     update_data = payload.model_dump(exclude_unset=True)
     if "password" in update_data and update_data["password"]:
@@ -693,6 +892,124 @@ async def list_system_logs(
     stmt = select(SystemLog).order_by(SystemLog.timestamp.desc()).limit(limit)
     result = await db.execute(stmt)
     return [SystemLogOut.model_validate(log) for log in result.scalars().all()]
+
+
+# ── Saved notifications ────────────────────────────────────────────────────────
+
+async def _get_owned_notification(db: AsyncSession, user_id: int, notification_id: int) -> Notification:
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == user_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return record
+
+
+@notifications_router.get("", response_model=list[NotificationOut], summary="List saved notifications for the current user")
+async def list_notifications(
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[NotificationOut]:
+    stmt = (
+        select(Notification)
+        .where(Notification.user_id == current_user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return [NotificationOut.model_validate(item) for item in result.scalars().all()]
+
+
+@notifications_router.post("", response_model=NotificationOut, status_code=201, summary="Save a notification for the current user")
+async def create_notification(
+    payload: NotificationCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NotificationOut:
+    # Re-sending the same event (same client_id) is a no-op
+    if payload.client_id:
+        result = await db.execute(
+            select(Notification).where(
+                Notification.user_id == current_user.id,
+                Notification.client_id == payload.client_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            return NotificationOut.model_validate(existing)
+
+    record = Notification(
+        user_id=current_user.id,
+        client_id=payload.client_id,
+        title=payload.title,
+        message=payload.message,
+        type=payload.type,
+        location=payload.location,
+        alert_level=payload.alert_level,
+    )
+    if payload.created_at is not None:
+        created_at = payload.created_at
+        if created_at.tzinfo is not None:
+            created_at = created_at.astimezone(timezone.utc)
+        record.created_at = created_at
+
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return NotificationOut.model_validate(record)
+
+
+@notifications_router.post("/read-all", status_code=204, summary="Mark every saved notification as read")
+async def mark_all_notifications_read(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    await db.execute(
+        update(Notification)
+        .where(Notification.user_id == current_user.id, Notification.is_read == False)  # noqa: E712
+        .values(is_read=True)
+    )
+    await db.commit()
+
+
+@notifications_router.patch("/{notification_id}/read", response_model=NotificationOut, summary="Mark one notification as read")
+async def mark_notification_read(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NotificationOut:
+    record = await _get_owned_notification(db, current_user.id, notification_id)
+    record.is_read = True
+    await db.commit()
+    await db.refresh(record)
+    return NotificationOut.model_validate(record)
+
+
+@notifications_router.delete("/{notification_id}", status_code=204, summary="Delete one notification")
+async def delete_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    record = await _get_owned_notification(db, current_user.id, notification_id)
+    await db.delete(record)
+    await db.commit()
+
+
+@notifications_router.delete("", status_code=204, summary="Clear all saved notifications")
+async def clear_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    result = await db.execute(select(Notification).where(Notification.user_id == current_user.id))
+    for record in result.scalars().all():
+        await db.delete(record)
+    await db.commit()
 
 
 async def _log_system_event(db: AsyncSession, user: str, action: str, details: str, is_suspicious: bool = False) -> None:

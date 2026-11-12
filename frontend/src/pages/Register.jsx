@@ -133,7 +133,7 @@ const Register = () => {
       });
 
       setSuccess(
-        "Account created successfully!"
+        "Account created. Taking you to sign in…"
       );
 
       setTimeout(() => {
@@ -164,9 +164,8 @@ const Register = () => {
 
   return (
     <AuthLayout
-      eyebrow="Create account"
       title="Join WildGuard"
-      description="Register to access your operations workspace."
+      description="Create an account for your land, village, or patrol area."
     >
       {/* error handling */}
       {errors.form && (
@@ -203,7 +202,7 @@ const Register = () => {
         <Field
           label="Full name"
           name="fullName"
-          placeholder="John Doe"
+          placeholder="Ravi Kumar"
           value={formData.fullName}
           onChange={update}
           error={errors.fullName}
@@ -349,7 +348,7 @@ const Register = () => {
         <button
           type="submit"
           disabled={isLoading}
-          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border-0 bg-linear-to-br from-[#7fe6b4] to-[#38d59d] px-4 py-2.5 text-sm font-extrabold text-[#062b22] shadow-[0_12px_28px_rgba(56,213,157,.25)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
+          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border-0 bg-linear-to-br from-[#7fe6b4] to-[#38d59d] px-4 py-2.5 text-sm font-semibold text-[#062b22] shadow-[0_12px_28px_rgba(56,213,157,.25)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
         >
 
           {isLoading ? (

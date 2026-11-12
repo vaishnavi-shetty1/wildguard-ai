@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, field_validator
-from datetime import datetime
+from pydantic import BaseModel, Field, field_validator, field_serializer
+from datetime import datetime, timezone
 from typing import Optional, Literal
 
 
@@ -132,9 +132,31 @@ class UserOut(BaseModel):
     location_name: str
     sms_alerts_enabled: bool
     is_active: bool
+    created_by: Optional[int] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalise_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(..., min_length=10, max_length=256)
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+class PasswordResetResponse(BaseModel):
+    status: str = "ok"
+    message: str
+    # Only populated in development when email delivery isn't configured yet
+    reset_url: Optional[str] = None
 
 
 class Token(BaseModel):
@@ -199,6 +221,42 @@ class SosOut(BaseModel):
     acknowledged: bool
     message: str
     broadcast_count: int
+
+
+# ── Notification schemas ───────────────────────────────────────────────────────
+
+
+class NotificationCreate(BaseModel):
+    """A dashboard notification to store for the signed-in user."""
+
+    client_id: Optional[str] = Field(None, max_length=64)
+    title: str = Field(..., min_length=1, max_length=160)
+    message: str = Field("", max_length=512)
+    type: str = Field("system", max_length=32)
+    location: Optional[str] = Field(None, max_length=128)
+    alert_level: Optional[str] = Field(None, max_length=16)
+    created_at: Optional[datetime] = None
+
+
+class NotificationOut(BaseModel):
+    id: int
+    client_id: Optional[str]
+    title: str
+    message: str
+    type: str
+    location: Optional[str]
+    alert_level: Optional[str]
+    is_read: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        # SQLite hands datetimes back without tzinfo; they are stored in UTC
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
 
 
 # ── System log schemas ─────────────────────────────────────────────────────────

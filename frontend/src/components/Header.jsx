@@ -5,11 +5,11 @@ import {
   User2,
   Bell,
   MapPin,
-  Radio,
   ChevronDown,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
+import { formatDate } from "../utils/datetime";
 
 const Header = ({
   activeTab = "home",
@@ -77,15 +77,12 @@ useEffect(() => {
   const updateTime = () => {
     const now = new Date();
     setTime(
-      now.toLocaleString([], {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
+      `${formatDate(now)} ${now.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
         hour12: false,
-      })
+      })}`
     );
   };
   // Display immediately
@@ -141,27 +138,6 @@ useEffect(() => {
     }
   };
 
-  const getRoleBadge = () => {
-    if (!currentUser) return "";
-
-    switch (currentUser.role) {
-      case "admin":
-        return "ADMIN NODE";
-
-      case "operator":
-        return "OPERATOR NODE";
-
-      case "landowner":
-        return "LANDOWNER NODE";
-
-      case "village_head":
-        return "VILLAGE NODE";
-
-      default:
-        return "USER NODE";
-    }
-  };
-
   // role based navigation
 
   const getTabs = () => {
@@ -187,7 +163,7 @@ useEffect(() => {
         },
         {
           id: "stakeholder",
-          label: "Farm Portal & SOS",
+          label: "My land",
         },
         {
           id: "sms",
@@ -213,7 +189,7 @@ useEffect(() => {
         },
         {
           id: "stakeholder",
-          label: "Village Portal & SOS",
+          label: "My village",
         },
         {
           id: "sms",
@@ -272,10 +248,6 @@ useEffect(() => {
           label: "SMS Center",
         },
         {
-          id: "training",
-          label: "Classifier Training",
-        },
-        {
           id: "admin",
           label: "Control Panel",
         },
@@ -305,7 +277,6 @@ useEffect(() => {
       home: "/home",
       dashboard: "/home?tab=dashboard",
       sms: "/home?tab=sms",
-      training: "/home?tab=training",
       stakeholder:
         "/home?tab=stakeholder",
       admin: "/home?tab=admin",
@@ -327,10 +298,6 @@ useEffect(() => {
 
     localStorage.removeItem(
       "wildguard_token"
-    );
-
-    localStorage.removeItem(
-      "wildguard_remember"
     );
 
     setCurrentUser(null);
@@ -380,9 +347,9 @@ useEffect(() => {
 
             <div>
 
-              <h1 className="flex items-center gap-1.5 text-base font-bold tracking-tight text-slate-100 sm:text-lg">
+              <h1 className="flex items-center gap-1.5 text-base font-semibold tracking-tight text-slate-100 sm:text-lg">
 
-                WILDGUARD
+                WildGuard
 
                 <span className="text-emerald-400">
                   AI
@@ -390,8 +357,8 @@ useEffect(() => {
 
               </h1>
 
-              <span className="hidden text-[12px] font-mono uppercase tracking-[0.18em] text-slate-500 sm:block">
-                Wildlife protection and prevention
+              <span className="hidden text-[12px] text-slate-500 sm:block">
+                Wildlife monitoring for protected areas
               </span>
 
             </div>
@@ -404,18 +371,12 @@ useEffect(() => {
 
             {/* SYSTEM STATUS */}
 
-            <div className="hidden items-center gap-1.5 rounded-lg border border-emerald-500/10 bg-emerald-500/5 px-2.5 py-1.5 lg:flex">
+            <div className="hidden items-center gap-2 px-1 lg:flex">
 
-              <span className="relative flex size-2">
+              <span className="size-1.5 rounded-full bg-emerald-400" />
 
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-
-                <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
-
-              </span>
-
-              <span className="text-[12px] font-bold uppercase tracking-wider text-emerald-400">
-                System Online
+              <span className="text-[13px] text-slate-400">
+                Connected
               </span>
 
             </div>
@@ -434,7 +395,7 @@ useEffect(() => {
                 <Bell size={16} />
 
                 {unreadCount > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-red-500 text-[11px] font-bold leading-none text-white">
+                  <span className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-red-500 text-[11px] font-semibold leading-none text-white">
                     {unreadCount}
                   </span>
                 )}
@@ -452,7 +413,7 @@ useEffect(() => {
                     (value) => !value
                   )
                 }
-                className="flex size-9 cursor-pointer items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-sm font-bold text-emerald-400 md:hidden"
+                className="flex size-9 cursor-pointer items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-sm font-semibold text-emerald-400 md:hidden"
               >
                 {userInitial}
               </button>
@@ -519,15 +480,14 @@ useEffect(() => {
 
             {/* UTC */}
 
-            <div className="hidden flex-col items-end text-right font-mono xl:flex">
+            <div className="hidden flex-col items-end text-right xl:flex">
 
-              <span className="text-[12px] uppercase tracking-wider text-slate-500">
-                Surveillance UTC Feed
+              <span className="text-[12px] text-slate-500">
+                Local time
               </span>
 
-              <span className="text-[13px] font-medium text-slate-300">
-                {time ||
-                  "0000-00-00 00:00:00 UTC"}
+              <span className="text-[13px] font-medium tabular-nums text-slate-300">
+                {time || "—"}
               </span>
 
             </div>
@@ -568,7 +528,7 @@ useEffect(() => {
                   <Bell size={15} />
 
                   {unreadCount > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 grid size-5 animate-pulse place-items-center rounded-full bg-red-500 text-[11px] font-bold leading-none text-white">
+                    <span className="absolute -right-1.5 -top-1.5 grid size-5 animate-pulse place-items-center rounded-full bg-red-500 text-[11px] font-semibold leading-none text-white">
                       {unreadCount}
                     </span>
                   )}
@@ -593,7 +553,7 @@ useEffect(() => {
                     {/* AVATAR */}
 
                     <div
-                      className={`grid size-7 place-items-center rounded-full border bg-white/5 text-xs font-bold ${getRoleColor()} border-current/20`}
+                      className={`grid size-7 place-items-center rounded-full border bg-white/5 text-xs font-semibold ${getRoleColor()} border-current/20`}
                     >
                       {userInitial}
                     </div>
@@ -609,9 +569,9 @@ useEffect(() => {
                       </p>
 
                       <p
-                        className={`truncate text-[11px] uppercase tracking-wider ${getRoleColor()}`}
+                        className={`truncate text-[11px] ${getRoleColor()}`}
                       >
-                        {getRoleBadge()}
+                        {getRoleName()}
                       </p>
 
                     </div>
@@ -675,21 +635,21 @@ useEffect(() => {
                             <div className="mb-3 flex items-center gap-2.5">
 
                               <div
-                                className={`grid size-9 place-items-center rounded-full border bg-white/5 font-bold ${getRoleColor()} border-current/20`}
+                                className={`grid size-9 place-items-center rounded-full border bg-white/5 font-semibold ${getRoleColor()} border-current/20`}
                               >
                                 {userInitial}
                               </div>
 
                               <div className="min-w-0">
 
-                                <p className="truncate text-xs font-bold text-slate-100">
+                                <p className="truncate text-xs font-semibold text-slate-100">
                                   {
                                     currentUser.username
                                   }
                                 </p>
 
                                 <p
-                                  className={`text-[12px] uppercase tracking-wider ${getRoleColor()}`}
+                                  className={`text-[12px] ${getRoleColor()}`}
                                 >
                                   {
                                     getRoleName()
@@ -704,7 +664,7 @@ useEffect(() => {
 
                               <div>
 
-                                <p className="text-[12px] uppercase tracking-wider text-slate-500">
+                                <p className="text-[12px] text-slate-500">
                                   Email
                                 </p>
 
@@ -719,7 +679,7 @@ useEffect(() => {
                               {currentUser.phone && (
                                 <div>
 
-                                  <p className="text-[12px] uppercase tracking-wider text-slate-500">
+                                  <p className="text-[12px] text-slate-500">
                                     Mobile
                                   </p>
 
@@ -735,8 +695,8 @@ useEffect(() => {
                               {currentUser.locationName && (
                                 <div>
 
-                                  <p className="text-[12px] uppercase tracking-wider text-slate-500">
-                                    Assigned Sector
+                                  <p className="text-[12px] text-slate-500">
+                                    Location
                                   </p>
 
                                   <p className="truncate text-[13px] text-slate-300">
@@ -752,34 +712,7 @@ useEffect(() => {
 
                           </div>
 
-                          {/* ROLE */}
-
                           <div className="p-2">
-
-                            <div className="mb-1 flex items-center gap-2 rounded-lg bg-slate-950/50 px-2.5 py-2">
-
-                              <Radio
-                                size={13}
-                                className={getRoleColor()}
-                              />
-
-                              <div>
-
-                                <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">
-                                  Access Level
-                                </p>
-
-                                <p
-                                  className={`text-[13px] font-semibold ${getRoleColor()}`}
-                                >
-                                  {
-                                    getRoleName()
-                                  }
-                                </p>
-
-                              </div>
-
-                            </div>
 
                             {/* LOGOUT */}
 
@@ -795,7 +728,7 @@ useEffect(() => {
                                 size={14}
                               />
 
-                              Secure Disconnect
+                              Sign out
 
                             </button>
 
@@ -823,7 +756,7 @@ useEffect(() => {
 
                 <User2 size={14} />
 
-                Ranger Console Access
+                Sign in
 
               </button>
             )}
@@ -840,7 +773,7 @@ useEffect(() => {
             <div className="flex min-w-0 items-center gap-2">
 
               <div
-                className={`grid size-8 shrink-0 place-items-center rounded-full border bg-white/5 text-[13px] font-bold ${getRoleColor()} border-current/20`}
+                className={`grid size-8 shrink-0 place-items-center rounded-full border bg-white/5 text-[13px] font-semibold ${getRoleColor()} border-current/20`}
               >
                 {userInitial}
               </div>
@@ -854,9 +787,9 @@ useEffect(() => {
                 </p>
 
                 <p
-                  className={`text-[11px] uppercase tracking-wider ${getRoleColor()}`}
+                  className={`text-[11px] ${getRoleColor()}`}
                 >
-                  {getRoleBadge()}
+                  {getRoleName()}
                 </p>
 
               </div>
@@ -865,7 +798,7 @@ useEffect(() => {
 
             <div className="flex items-center gap-2">
 
-              <span className="font-mono text-[11px] text-slate-500">
+              <span className="text-[11px] tabular-nums text-slate-500">
                 {time}
               </span>
 

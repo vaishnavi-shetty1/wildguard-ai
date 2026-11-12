@@ -3,6 +3,7 @@ import {
 } from "./wildlifePrediction";
 import { postDetection, getThreatLevel } from "../api";
 import { TARGET_SPECIES } from "./detectionModel";
+import { formatDate } from "./datetime";
 
 const THREAT_TO_SPECIES = {
   CRITICAL: "tiger",
@@ -95,7 +96,7 @@ export const handleWildlifePrediction = async ({
       cameraState?.cameraName ||
       "AI Camera",
     timestamp,
-    date: new Date(timestamp).toLocaleDateString(),
+    date: formatDate(timestamp),
     time: new Date(timestamp).toLocaleTimeString(),
   };
 
@@ -108,6 +109,10 @@ export const handleWildlifePrediction = async ({
 
   /*
    * Create notification from the SAME prediction.
+   *
+   * The backend already saved a "Wildlife Detected" notification for this
+   * detection under `ws-<id>`, so reuse that id to avoid a duplicate entry
+   * in the saved history.
    */
   const notification =
     createWildlifePredictionNotification({
@@ -116,7 +121,10 @@ export const handleWildlifePrediction = async ({
       timestamp,
     });
 
-  addNotification(notification);
+  addNotification({
+    ...notification,
+    clientId: `ws-${resolvedId}`,
+  });
 };
 
 const mapThreatToSpecies = (threatLevel) => {

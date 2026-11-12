@@ -1,3 +1,5 @@
+import { formatDate } from "./utils/datetime";
+
 const API_BASE = "/api/v1";
 
 function getAuthHeaders() {
@@ -47,6 +49,20 @@ export function registerUser(payload) {
 
 export function getCurrentUser() {
   return request("/auth/me");
+}
+
+export function requestPasswordReset({ email }) {
+  return request("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword({ token, password }) {
+  return request("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  });
 }
 
 export function fetchUsers() {
@@ -109,6 +125,55 @@ export function sendSos(payload) {
 
 export function fetchSystemLogs(limit = 100) {
   return request(`/logs?limit=${limit}`);
+}
+
+export function fetchNotifications(limit = 100) {
+  return request(`/notifications?limit=${limit}`);
+}
+
+export function createNotification(payload) {
+  return request("/notifications", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function markNotificationReadRequest(id) {
+  return request(`/notifications/${id}/read`, {
+    method: "PATCH",
+  });
+}
+
+export function markAllNotificationsReadRequest() {
+  return request("/notifications/read-all", {
+    method: "POST",
+  });
+}
+
+export function deleteNotificationRequest(id) {
+  return request(`/notifications/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function clearNotificationsRequest() {
+  return request("/notifications", {
+    method: "DELETE",
+  });
+}
+
+export function mapBackendNotification(n) {
+  return {
+    id: String(n.id),
+    clientId: n.client_id || "",
+    title: n.title,
+    message: n.message || "",
+    type: n.type || "system",
+    location: n.location || "",
+    alertLevel: n.alert_level || "",
+    read: Boolean(n.is_read),
+    timestamp: n.created_at,
+  };
 }
 
 export function predictImage({
@@ -201,7 +266,7 @@ export function mapBackendDetection(d) {
     location,
     cameraName: d.device_id || "AI Camera",
     timestamp: ts,
-    date: new Date(ts).toLocaleDateString(),
+    date: formatDate(ts),
     time: new Date(ts).toLocaleTimeString(),
     smsSent: d.sms_sent,
     imageB64: d.image_b64,
@@ -226,6 +291,7 @@ export function mapBackendUser(u) {
     locationName: u.location_name || "",
     smsAlertsEnabled: u.sms_alerts_enabled,
     isActive: u.is_active,
+    createdBy: u.created_by ?? null,
     createdAt: u.created_at,
   };
 }
@@ -249,7 +315,7 @@ export function mapSmsLog(l) {
 export function mapSystemLog(sl) {
   return {
     id: String(sl.id),
-    timestamp: new Date(sl.timestamp).toLocaleString(),
+    timestamp: `${formatDate(sl.timestamp)} ${new Date(sl.timestamp).toLocaleTimeString()}`,
     user: sl.user || "",
     ip: sl.ip || "",
     action: sl.action || "",

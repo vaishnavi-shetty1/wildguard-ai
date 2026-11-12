@@ -9,6 +9,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { fetchDetections, mapBackendDetection } from "../api";
+import { formatDate } from "../utils/datetime";
 
 const sampleDetections = [
   {
@@ -22,7 +23,7 @@ const sampleDetections = [
     location: "Zone A - Forest Boundary",
     cameraName: "Camera 01",
     timestamp: new Date().toISOString(),
-    date: new Date().toLocaleDateString(),
+    date: formatDate(new Date()),
     time: new Date().toLocaleTimeString(),
   },
   {
@@ -36,7 +37,7 @@ const sampleDetections = [
     location: "Zone B - Agricultural Area",
     cameraName: "Camera 03",
     timestamp: new Date().toISOString(),
-    date: new Date().toLocaleDateString(),
+    date: formatDate(new Date()),
     time: new Date().toLocaleTimeString(),
   },
   {
@@ -50,7 +51,7 @@ const sampleDetections = [
     location: "Zone C - Monitoring Point",
     cameraName: "Camera 05",
     timestamp: new Date().toISOString(),
-    date: new Date().toLocaleDateString(),
+    date: formatDate(new Date()),
     time: new Date().toLocaleTimeString(),
   },
 ];
@@ -87,6 +88,8 @@ const getIconClass = (level) => {
   }
 };
 
+const capitalize = (value = "") => value.charAt(0) + value.slice(1).toLowerCase();
+
 const DetectionsPAge = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -119,6 +122,9 @@ const DetectionsPAge = () => {
       ? location.state.detections
       : [];
 
+  const isSample =
+    backendDetections.length === 0 && drafts.length === 0 && !isLoading;
+
   const detections =
     backendDetections.length > 0
       ? [...backendDetections, ...drafts]
@@ -147,12 +153,12 @@ const DetectionsPAge = () => {
             </button>
 
             <div>
-              <h1 className="text-lg font-bold text-slate-100">
-                Wildlife Detections
+              <h1 className="text-lg font-semibold text-slate-100">
+                Detections
               </h1>
 
-              <p className="text-[13px] uppercase tracking-wider text-slate-500">
-                Complete AI detection history
+              <p className="text-[13px] text-slate-500">
+                Everything the cameras have flagged so far.
               </p>
             </div>
 
@@ -164,8 +170,8 @@ const DetectionsPAge = () => {
               className="text-emerald-400"
             />
 
-            <span className="text-xs font-semibold text-emerald-400">
-              {detections.length} Detections
+            <span className="text-xs font-medium tabular-nums text-emerald-400">
+              {detections.length} recorded
             </span>
           </div>
 
@@ -173,7 +179,13 @@ const DetectionsPAge = () => {
 
         {loadError && (
           <div className="border-t border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-[14px] text-amber-300">
-            Backend unavailable — showing last known data. ({loadError})
+            Backend unavailable — showing the last known data. ({loadError})
+          </div>
+        )}
+
+        {isSample && (
+          <div className="border-t border-slate-800 bg-slate-900/40 px-4 py-2 text-center text-[13px] text-slate-400">
+            No detections recorded yet, so these are sample rows.
           </div>
         )}
       </header>
@@ -183,12 +195,12 @@ const DetectionsPAge = () => {
       <main className="mx-auto max-w-[1400px] px-4 py-6">
 
         <div className="mb-5">
-          <h2 className="text-xl font-bold text-slate-100">
-            All Wildlife Activity
+          <h2 className="text-xl font-semibold text-slate-100">
+            Activity
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            AI and sensor-based wildlife detections recorded by WildGuard.
+            Newest first.
           </p>
         </div>
 
@@ -204,12 +216,12 @@ const DetectionsPAge = () => {
               </div>
 
               <div>
-                <h3 className="text-sm font-bold text-slate-200">
-                  Detection History
+                <h3 className="text-sm font-semibold text-slate-200">
+                  Detection history
                 </h3>
 
                 <p className="text-[13px] text-slate-500">
-                  Latest wildlife classification events
+                  What each camera saw and how sure the model was
                 </p>
               </div>
 
@@ -249,16 +261,16 @@ const DetectionsPAge = () => {
 
                     <div className="flex flex-wrap items-center gap-2">
 
-                      <h3 className="text-sm font-bold text-slate-100">
+                      <h3 className="text-sm font-semibold text-slate-100">
                         {detection.animal}
                       </h3>
 
                       <span
-                        className={`rounded border px-2 py-0.5 text-[11px] font-bold uppercase ${getLevelClass(
+                        className={`rounded px-2 py-0.5 text-[11px] font-medium ${getLevelClass(
                           detection.level
                         )}`}
                       >
-                        {detection.level}
+                        {capitalize(detection.level)}
                       </span>
 
                     </div>
@@ -283,11 +295,11 @@ const DetectionsPAge = () => {
 
                   <div className="min-w-[100px]">
 
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                      AI Confidence
+                    <p className="text-[11px] text-slate-500">
+                      Confidence
                     </p>
 
-                    <p className="mt-1 text-sm font-bold text-slate-200">
+                    <p className="mt-1 text-sm font-semibold text-slate-200">
                       {detection.confidence}
                     </p>
 
@@ -323,7 +335,7 @@ const DetectionsPAge = () => {
             onClick={() => navigate("/home")}
             className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-400 transition hover:border-emerald-500/30 hover:text-emerald-400"
           >
-            ← Back to Overview
+← Back to overview
           </button>
         </div>
 

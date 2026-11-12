@@ -1,7 +1,7 @@
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Float, String, DateTime, Integer, Boolean
+from sqlalchemy import Float, String, DateTime, Integer, Boolean, UniqueConstraint
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -62,6 +62,23 @@ class User(Base):
     location_name: Mapped[str] = mapped_column(String(128), default="")
     sms_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Who created the account — operators may only manage the users they added
+    created_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    # Only the SHA-256 of the token is stored, so the DB never holds a usable link
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -98,6 +115,31 @@ class SmsConfig(Base):
     twilio_configured: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+
+    # Client-side id so re-sends of the same event don't create duplicates
+    client_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    title: Mapped[str] = mapped_column(String(160), default="")
+    message: Mapped[str] = mapped_column(String(512), default="")
+    type: Mapped[str] = mapped_column(String(32), default="system")
+    location: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    alert_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_id", name="uq_notification_user_client"),
+    )
+
+
 class SystemLog(Base):
     __tablename__ = "system_logs"
 
@@ -131,6 +173,10 @@ def _add_sqlite_columns(sync_conn) -> None:
         sync_conn.execute(sa.text("ALTER TABLE detections ADD COLUMN status VARCHAR(32) DEFAULT 'active'"))
     if "alert_level" not in det_columns:
         sync_conn.execute(sa.text("ALTER TABLE detections ADD COLUMN alert_level VARCHAR(16)"))
+
+    user_columns = {col["name"] for col in inspector.get_columns("users")}
+    if "created_by" not in user_columns:
+        sync_conn.execute(sa.text("ALTER TABLE users ADD COLUMN created_by INTEGER"))
 
 
 async def get_db() -> AsyncSession:  # type: ignore[override]

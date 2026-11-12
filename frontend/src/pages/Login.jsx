@@ -14,7 +14,6 @@ const Login = () => {
   const [formData, setFormData] = useState({
     email: location.state?.registeredEmail || "",
     password: "",
-    rememberMe: false,
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -22,10 +21,10 @@ const Login = () => {
 
   //input update
   const update = (event) => {
-    const {name,value,type,checked} = event.target;
+    const {name,value} = event.target;
     setFormData((current) => ({
       ...current,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: value,
     }));
     setError("");
     setSuccess("");
@@ -67,10 +66,7 @@ const Login = () => {
       localStorage.setItem("wildguard_user", JSON.stringify(authenticatedUser));
       localStorage.setItem("wildguard_token", response.access_token);
 
-      if (formData.rememberMe) {
-        localStorage.setItem("wildguard_remember","true");
-      }
-      setSuccess("Login successful. Redirecting...");
+      setSuccess("Signed in. Taking you in…");
       setTimeout(() => {
         navigate("/home", {replace: true});
       }, 500);
@@ -83,7 +79,7 @@ const Login = () => {
   };
 
   return (
-    <AuthLayout eyebrow="Secure access" title="Welcome back" description="Sign in to continue to your operations workspace.">
+    <AuthLayout title="Welcome back" description="Sign in to see your alerts, camera feed, and recent detections.">
 
       {/* ERROR */}
       {error && (
@@ -124,19 +120,8 @@ const Login = () => {
           </div>
         </label>
 
-        {/* Remember */}
-        <div className="flex items-center justify-between">
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-[#cce4dcb3]">
-            <input type="checkbox" name="rememberMe" checked={formData.rememberMe} onChange={update} className="size-4 accent-emerald-400"/>
-            Remember me
-          </label>
-          <button type="button" onClick={() => setError("Password recovery will be connected to the backend.")} className="cursor-pointer border-0 bg-transparent text-xs font-semibold text-[#7fe6b4] hover:text-[#a6f3cc]">
-            Forgot password?
-          </button>
-        </div>
-
         {/* Submit */}
-        <button type="submit" disabled={isLoading} className="mt-1 inline-flex min-h-11.5 cursor-pointer items-center justify-center gap-2 rounded-[13px] border-0 bg-linear-to-br from-[#7fe6b4] to-[#38d59d] px-4 py-3 text-sm font-extrabold text-[#062b22] shadow-[0_14px_32px_rgba(56,213,157,.28)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60">
+        <button type="submit" disabled={isLoading} className="mt-1 inline-flex min-h-11.5 cursor-pointer items-center justify-center gap-2 rounded-[13px] border-0 bg-linear-to-br from-[#7fe6b4] to-[#38d59d] px-4 py-3 text-sm font-semibold text-[#062b22] shadow-[0_14px_32px_rgba(56,213,157,.28)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60">
           {isLoading ? (
             <>
               <span className="size-4 animate-spin rounded-full border-2 border-[#062b22] border-t-transparent" />
@@ -157,14 +142,14 @@ const Login = () => {
           Don't have an account?
         </span>
         <button type="button" onClick={() => navigate("/register")} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-[#d7f7e4] hover:text-[#7fe6b4]">
-          Create one here
+          Create an account
         </button>
       </div>
 
       {/* DEMO LOGIN */}
       <div className="mt-5 border-t border-white/5 pt-4">
-        <p className="mb-2 text-center text-[12px] font-bold uppercase tracking-[.16em] text-[#7fe6b4]">
-          Demo accounts
+        <p className="mb-2 text-center text-[12px] text-[#9fb8b0]">
+          Try a demo account — clicking one fills the form.
         </p>
 
         <div className="grid grid-cols-2 gap-2">
@@ -186,7 +171,7 @@ const Login = () => {
 const DemoLogin = ({label,email,password,onSelect}) => {
   return (
     <button type="button" onClick={() => onSelect(email, password)} className="rounded-[10px] border border-[#8cb3a426] bg-white/3 px-2.5 py-2 text-left transition hover:border-[#7fe6b466] hover:bg-white/5">
-      <span className="block text-[13px] font-bold text-[#edfdf5]">
+      <span className="block text-[13px] font-semibold text-[#edfdf5]">
         {label}
       </span>
       <span className="block truncate text-[11px] text-[#9fb8b0]">

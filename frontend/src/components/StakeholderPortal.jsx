@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -11,7 +11,8 @@ import {
   Siren,
   Users,
 } from "lucide-react";
-import { sendSos } from "../api";
+import { fetchDetections, fetchUsers, mapBackendDetection, mapBackendUser, sendSos } from "../api";
+import { formatDate } from "../utils/datetime";
 
 const StakeholderPortal = ({ currentUser, onNotification }) => {
   const [sosSent, setSosSent] = useState(false);
@@ -23,78 +24,93 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
 
   const isVillageHead = currentUser?.role === "village_head";
 
+  const [detections, setDetections] = useState([]);
+  const [people, setPeople] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchDetections({ limit: 50 })
+      .then((records) => {
+        if (!cancelled) setDetections((records || []).map(mapBackendDetection));
+      })
+      .catch(() => {});
+
+    fetchUsers()
+      .then((records) => {
+        if (!cancelled) setPeople((records || []).map(mapBackendUser));
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const portalTitle = isVillageHead
-    ? "Village Portal & SOS"
-    : "Farm Portal & SOS";
+    ? "Village portal"
+    : "Farm portal";
 
   const portalDescription = isVillageHead
-    ? "Monitor village-level wildlife threats, receive alerts, and coordinate emergency response."
-    : "Monitor your farm or land area, receive wildlife alerts, and request immediate assistance.";
+    ? "See what has been moving around the village, and call for help if you need it."
+    : "See what has been moving around your land, and call for help if you need it.";
 
   const locationName =
     currentUser?.locationName ||
     (isVillageHead ? "Silverwood Hamlet" : "Green Valley Orchards");
 
-  const stats = useMemo(
-    () => [
-      {
-        label: "Current Threat Level",
-        value: "LOW",
-        icon: Shield,
-        type: "success",
-      },
-      {
-        label: "Active Alerts",
-        value: "2",
-        icon: Bell,
-        type: "warning",
-      },
-      {
-        label: "Response Team",
-        value: "ONLINE",
-        icon: Radio,
-        type: "success",
-      },
-      {
-        label: "Nearby Users",
-        value: isVillageHead ? "18" : "6",
-        icon: Users,
-        type: "info",
-      },
-    ],
-    [isVillageHead]
-  );
+  const stats = useMemo(() => {
+    const threatLevels = detections.map((d) => d.level);
+    const currentLevel = threatLevels.includes("HIGH")
+      ? "HIGH"
+      : threatLevels.includes("MEDIUM")
+        ? "MEDIUM"
+        : "LOW";
 
-  const recentAlerts = [
-    {
-      id: 1,
-      species: "Elephant",
-      location: locationName,
-      time: "10 minutes ago",
-      level: "HIGH",
-      message:
-        "Possible elephant movement detected near the monitored boundary.",
-      status: "Active",
-    },
-    {
-      id: 2,
-      species: "No Threat",
-      location: locationName,
-      time: "42 minutes ago",
-      level: "LOW",
-      message: "Camera scan completed. No immediate threat detected.",
-      status: "Resolved",
-    },
-    {
-      id: 3,
-      species: "Human intruder",
-      location: locationName,
-      time: "1 hour ago",
-      level: "MEDIUM",
-      message: "Unidentified movement detected near the perimeter.",
-      status: "Resolved",
-    },
-  ];
+    const team = people.filter(
+      (person) => person.role === "operator" || person.role === "admin"
+    );
+
+    const nearby = people.filter(
+      (person) => person.locationName && person.locationName === locationName
+    );
+
+    return [
+      {
+        label: "Threat level",
+        value: currentLevel,
+        icon: Shield,
+      },
+      {
+        label: "Recent alerts",
+        value: String(detections.length),
+        icon: Bell,
+      },
+      {
+        label: "Responders",
+        value: String(team.length),
+        icon: Radio,
+      },
+      {
+        label: "People nearby",
+        value: String(nearby.length),
+        icon: Users,
+      },
+    ];
+  }, [detections, people, locationName]);
+
+  const recentAlerts = detections.slice(0, 4).map((detection) => ({
+    id: detection.id,
+    species: detection.animal,
+    location: detection.location,
+    time: timeAgo(detection.timestamp),
+    level: detection.level || "LOW",
+    message:
+      detection.animal === "No Threat"
+        ? "Camera scan finished. Nothing of concern in the frame."
+        : `${detection.animal} picked up by the camera at ${detection.location}.`,
+    status: detection.level === "HIGH" ? "Active" : "Resolved",
+  }));
 
   const sendSOS = async () => {
     setSosSent(true);
@@ -155,44 +171,19 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* Header */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">
+            {portalTitle}
+          </h1>
 
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">
-                  <Shield className="h-5 w-5" />
-                </div>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+            {portalDescription}
+          </p>
 
-                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
-                  Stakeholder Console
-                </span>
-              </div>
-
-              <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">
-                {portalTitle}
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                {portalDescription}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3">
-              <MapPin className="h-5 w-5 text-emerald-400" />
-
-              <div>
-                <p className="text-[13px] uppercase tracking-wider text-slate-500">
-                  Assigned Location
-                </p>
-
-                <p className="text-sm font-semibold text-slate-200">
-                  {locationName}
-                </p>
-              </div>
-            </div>
-
-          </div>
+          <p className="mt-2 flex items-center gap-1.5 text-[13px] text-slate-500">
+            <MapPin className="h-3.5 w-3.5" />
+            {locationName}
+          </p>
         </div>
 
         {/* SOS Emergency Section */}
@@ -205,18 +196,12 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
               </div>
 
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-400">
-                  Emergency Response
-                </p>
-
-                <h2 className="mt-1 text-xl font-bold text-white">
-                  Wildlife Emergency SOS
+                <h2 className="text-xl font-semibold text-white">
+                  Emergency SOS
                 </h2>
 
                 <p className="mt-1 max-w-xl text-sm leading-6 text-slate-400">
-                  Use SOS only when an immediate wildlife or human safety
-                  threat is present. Nearby response teams and configured
-                  stakeholders will be notified.
+                  Only use this if someone is in danger right now. It alerts the response team and everyone registered to this area.
                 </p>
               </div>
             </div>
@@ -224,7 +209,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
             <button
               onClick={sendSOS}
               disabled={sosSent}
-              className={`flex min-w-47.5 items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-bold transition-all ${
+              className={`flex min-w-47.5 items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-semibold transition-all ${
                 sosSent
                   ? "cursor-not-allowed bg-emerald-500 text-slate-950"
                   : "bg-red-500 text-white shadow-lg shadow-red-500/20 hover:bg-red-600 hover:shadow-red-500/30"
@@ -233,12 +218,12 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
               {sosSent ? (
                 <>
                   <CheckCircle2 className="h-5 w-5" />
-                  SOS Dispatched
+                  SOS sent
                 </>
               ) : (
                 <>
                   <Siren className="h-5 w-5" />
-                  SEND SOS
+                  Send SOS
                 </>
               )}
             </button>
@@ -257,28 +242,14 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
                 className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5"
               >
                 <div className="flex items-center justify-between">
-                  <div className="rounded-lg border border-slate-800 bg-slate-900 p-2">
-                    <Icon className="h-5 w-5 text-emerald-400" />
-                  </div>
+                  <p className="text-[13px] text-slate-400">
+                    {stat.label}
+                  </p>
 
-                  <span
-                    className={`rounded-full border px-2 py-1 text-[13px] font-bold ${
-                      stat.type === "warning"
-                        ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-400"
-                        : stat.type === "info"
-                        ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
-                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                    }`}
-                  >
-                    LIVE
-                  </span>
+                  <Icon className="h-4 w-4 text-slate-500" />
                 </div>
 
-                <p className="mt-4 text-xs uppercase tracking-wider text-slate-500">
-                  {stat.label}
-                </p>
-
-                <p className="mt-1 text-xl font-bold text-slate-100">
+                <p className="mt-3 text-xl font-semibold capitalize tabular-nums text-slate-100">
                   {stat.value}
                 </p>
               </div>
@@ -294,22 +265,30 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
 
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
               <div>
-                <h2 className="font-bold text-white">
-                  Recent Wildlife Alerts
+                <h2 className="font-semibold text-white">
+                  Recent alerts
                 </h2>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  Activity detected in your monitored area
+                  The last few detections from the cameras
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-emerald-400">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-                Live feed
-              </div>
+              {detections.length > 0 && (
+                <div className="flex items-center gap-2 text-xs text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  Live
+                </div>
+              )}
             </div>
 
             <div className="divide-y divide-slate-800">
+              {recentAlerts.length === 0 && (
+                <p className="px-5 py-10 text-center text-sm text-slate-500">
+                  No detections yet. Alerts appear here once the cameras spot something.
+                </p>
+              )}
+
               {recentAlerts.map((alert) => (
                 <div
                   key={alert.id}
@@ -337,11 +316,11 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
                           </h3>
 
                           <span
-                            className={`rounded-full border px-2 py-0.5 text-[12px] font-bold ${getLevelStyle(
+                            className={`rounded-full border px-2 py-0.5 text-[12px] font-medium ${getLevelStyle(
                               alert.level
                             )}`}
                           >
-                            {alert.level}
+                            {capitalize(alert.level)}
                           </span>
                         </div>
 
@@ -383,11 +362,11 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
             <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
               <div className="mb-4 flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-emerald-400" />
-                <h2 className="font-bold text-white">Monitoring Area</h2>
+                <h2 className="font-semibold text-white">Monitoring area</h2>
               </div>
 
-              <label className="mb-2 block text-xs font-medium text-slate-500">
-                SELECT LOCATION
+              <label className="mb-2 block text-[13px] text-slate-400">
+                Watching
               </label>
 
               <select
@@ -410,8 +389,8 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
               <div className="mt-4 rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-4">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                  <span className="text-sm font-semibold text-emerald-300">
-                    Monitoring Active
+                  <span className="text-sm font-medium text-emerald-300">
+                    Alerts are on
                   </span>
                 </div>
 
@@ -426,7 +405,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
             <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
               <div className="mb-4 flex items-center gap-2">
                 <Phone className="h-5 w-5 text-emerald-400" />
-                <h2 className="font-bold text-white">Response Team</h2>
+                <h2 className="font-semibold text-white">Response team</h2>
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
@@ -452,7 +431,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
                 >
                   <Phone className="h-3.5 w-3.5" />
-                  Contact Response Team
+                  Call the response team
                 </button>
               </div>
             </section>
@@ -468,12 +447,12 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
             </div>
 
             <div>
-              <h2 className="font-bold text-white">
-                Contact WildGuard Operations
+              <h2 className="font-semibold text-white">
+                Message WildGuard
               </h2>
 
               <p className="text-xs text-slate-500">
-                Send a message to the operations team
+                Tell the operations team about a sighting or a concern
               </p>
             </div>
           </div>
@@ -483,7 +462,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
-              placeholder="Describe a wildlife sighting, safety concern, or request..."
+              placeholder="What did you see, and where?"
               className="w-full resize-none rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-emerald-500/50"
             />
 
@@ -491,7 +470,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
               {messageSent ? (
                 <span className="flex items-center gap-2 text-xs text-emerald-400">
                   <CheckCircle2 className="h-4 w-4" />
-                  Message sent successfully.
+                  Message sent.
                 </span>
               ) : (
                 <span className="text-xs text-slate-600">
@@ -501,10 +480,10 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
 
               <button
                 type="submit"
-                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-emerald-400"
+                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
               >
                 <MessageSquare className="h-4 w-4" />
-                Send Message
+                Send message
               </button>
             </div>
           </form>
@@ -512,7 +491,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
 
         {/* Footer */}
         <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[13px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-          <span>WILDGUARD AI • Stakeholder Safety Network</span>
+          <span>WildGuard · community safety</span>
 
           <span>
             {currentUser?.username || "Guest"} •{" "}
@@ -523,6 +502,22 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
       </div>
     </div>
   );
+};
+
+const capitalize = (value = "") => value.charAt(0) + value.slice(1).toLowerCase();
+
+const timeAgo = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "recently";
+
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+
+  return formatDate(date);
 };
 
 export default StakeholderPortal;

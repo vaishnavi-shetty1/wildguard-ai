@@ -6,6 +6,7 @@ import {
   X,
   Bell,
 } from "lucide-react";
+import { formatDateTime } from "../utils/datetime";
 
 const NotificationToast = ({
   notification,
@@ -104,13 +105,7 @@ const NotificationToast = ({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[13px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                {notification.type === "ai"
-                  ? "AI Wildlife Detection"
-                  : "WildGuard Alert"}
-              </p>
-
-              <h3 className="mt-1 text-sm font-bold text-slate-100">
+              <h3 className="text-sm font-semibold text-slate-100">
                 {notification.title}
               </h3>
             </div>
@@ -130,7 +125,7 @@ const NotificationToast = ({
 
           {confidencePct !== null && (
             <div className="mt-3 flex items-center gap-2">
-              <span className="text-[12px] uppercase tracking-wider text-slate-500">
+              <span className="text-[12px] text-slate-400">
                 Confidence
               </span>
 
@@ -143,7 +138,7 @@ const NotificationToast = ({
                 />
               </div>
 
-              <span className="text-[13px] font-bold text-emerald-400">
+              <span className="text-[13px] font-semibold text-emerald-400">
                 {confidencePct}%
               </span>
             </div>
@@ -158,8 +153,8 @@ const NotificationToast = ({
             </p>
           )}
 
-          <div className="mt-2 text-[12px] font-mono text-slate-600">
-            {notification.time || "NOW"}
+          <div className="mt-2 text-[12px] text-slate-500">
+            {formatDateTime(notification.timestamp) || "Just now"}
           </div>
         </div>
       </div>

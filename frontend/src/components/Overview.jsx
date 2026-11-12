@@ -2,665 +2,352 @@ import React, { useMemo, useState, useEffect } from "react";
 import {
   Activity,
   AlertTriangle,
-  Bell,
   CheckCircle2,
   ChevronRight,
-  Eye,
+  Clock3,
   MapPin,
   Radio,
-  Shield,
   ShieldAlert,
   Smartphone,
-  Users,
-  Zap,
+  Eye,
 } from "lucide-react";
 import DetectionLogs from "./DetectionLogs";
 import { useNavigate } from "react-router-dom";
 import { fetchStats } from "../api";
+import { formatDate } from "../utils/datetime";
 
-const Overview = ({ currentUser, detectionLogs =[] }) => {
+const SAMPLE_SIGHTINGS = [
+  {
+    id: "sample-1",
+    animal: "Elephant",
+    level: "HIGH",
+    location: "Sector B3",
+    confidence: "96%",
+    timestamp: null,
+  },
+  {
+    id: "sample-2",
+    animal: "Leopard",
+    level: "MEDIUM",
+    location: "Sector A4",
+    confidence: "91%",
+    timestamp: null,
+  },
+  {
+    id: "sample-3",
+    animal: "Human intruder",
+    level: "CRITICAL",
+    location: "Reserve Gate 02",
+    confidence: "87%",
+    timestamp: null,
+  },
+  {
+    id: "sample-4",
+    animal: "No Threat",
+    level: "LOW",
+    location: "Sector C2",
+    confidence: "98%",
+    timestamp: null,
+  },
+];
+
+// Species the model reports that are not wildlife threats.
+const NON_THREAT_SPECIES = new Set(["no threat", "none", "unknown", ""]);
+
+const ROLE_COPY = {
+  admin: {
+    label: "Administrator",
+    description:
+      "You can see the whole network from here: detections, alerts, people, and the AI models running behind them.",
+  },
+  operator: {
+    label: "Forest operator",
+    description:
+      "Keep an eye on detections, field alerts, and the live camera feed across your patrol area.",
+  },
+  landowner: {
+    label: "Landowner",
+    description:
+      "Watch what is moving near your land and read the SMS alerts sent to you.",
+  },
+  village_head: {
+    label: "Village head",
+    description:
+      "Watch wildlife activity around the village and the alerts sent to residents.",
+  },
+};
+
+const timeAgo = (value) => {
+  if (!value) return "just now";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "just now";
+
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return "just now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ${days === 1 ? "day" : "days"} ago`;
+
+  return formatDate(date);
+};
+
+const levelStyles = {
+  CRITICAL: "bg-red-500/10 text-red-400",
+  HIGH: "bg-orange-500/10 text-orange-400",
+  MEDIUM: "bg-amber-500/10 text-amber-300",
+  LOW: "bg-emerald-500/10 text-emerald-400",
+};
+
+const Overview = ({ currentUser, detectionLogs = [] }) => {
+  const navigate = useNavigate();
   const [showAllDetections, setShowAllDetections] = useState(false);
   const [liveStats, setLiveStats] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     fetchStats()
-      .then((stats) => setLiveStats(stats))
-      .catch(() => setLiveStats(null));
+      .then((stats) => {
+        if (!cancelled) setLiveStats(stats);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveStats(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  //user information
+  const username = currentUser?.username || "there";
+  const role = currentUser?.role || "operator";
+  const location = currentUser?.locationName || "National reserve network";
+  const copy = ROLE_COPY[role] || ROLE_COPY.operator;
 
-  const navigate = useNavigate();
-  const username =
-    currentUser?.username || "WildGuard User";
+  const { threatCount, speciesCount, species, lastSeen, clients } = useMemo(() => {
+    const bySpecies = liveStats?.by_species || {};
 
-  const role =
-    currentUser?.role || "operator";
+    const threatSpecies = Object.entries(bySpecies).filter(
+      ([name]) => !NON_THREAT_SPECIES.has(String(name).toLowerCase())
+    );
 
-  const location =
-    currentUser?.locationName ||
-    "National Reserve Network";
+    const top = [...threatSpecies].sort((a, b) => Number(b[1]) - Number(a[1]))[0];
 
-  const roleLabel = useMemo(() => {
-    switch (role) {
-      case "admin":
-        return "Administrator";
-
-      case "operator":
-        return "Forest Operator";
-
-      case "landowner":
-        return "Landowner";
-
-      case "village_head":
-        return "Village Head";
-
-      default:
-        return "WildGuard User";
-    }
-  }, [role]);
-
-  //role description
-
-  const roleDescription = useMemo(() => {
-    switch (role) {
-      case "admin":
-        return "Monitor the complete WildGuard protection network, system activity, users, alerts, and AI operations.";
-
-      case "operator":
-        return "Monitor wildlife activity, field alerts, AI detections, and emergency response operations.";
-
-      case "landowner":
-        return "Monitor threats around your farm or assigned land and receive wildlife safety alerts.";
-
-      case "village_head":
-        return "Monitor village-level wildlife threats, community alerts, and emergency SOS operations.";
-
-      default:
-        return "Monitor wildlife protection operations in real time.";
-    }
-  }, [role]);
-
-  //dashboard stats
-
-  const totalDetections = liveStats?.total_detections ?? null;
-  const threatCount =
-    liveStats && liveStats.by_species
-      ? Object.values(liveStats.by_species).reduce(
-          (sum, n) => sum + Number(n),
-          0
-        )
-      : null;
+    return {
+      threatCount: liveStats ? threatSpecies.reduce((sum, [, n]) => sum + Number(n), 0) : null,
+      speciesCount: liveStats ? threatSpecies.length : null,
+      species: top ? top[0] : null,
+      lastSeen:
+        liveStats?.last_detection?.detected_at ||
+        detectionLogs[0]?.timestamp ||
+        null,
+      clients: liveStats ? Number(liveStats.live_dashboard_clients ?? 0) : null,
+    };
+  }, [liveStats, detectionLogs]);
 
   const stats = useMemo(() => {
-    const detectionsValue =
-      totalDetections != null ? String(totalDetections) : "—";
-    const threatsValue =
-      threatCount != null ? String(threatCount) : "—";
+    const total = liveStats?.total_detections;
+    const shared = [
+      {
+        label: "Threat detections",
+        value: threatCount != null ? String(threatCount) : "—",
+        hint: "Wildlife and people flagged as threats",
+        icon: ShieldAlert,
+        tone: "text-red-400",
+      },
+      {
+        label: "All detections",
+        value: total != null ? String(total) : "—",
+        hint: "Every event recorded by the cameras",
+        icon: Radio,
+        tone: "text-emerald-400",
+      },
+      {
+        label: "Species seen",
+        value: speciesCount != null ? String(speciesCount) : "—",
+        hint: species ? `Most often: ${species}` : "Distinct animals identified",
+        icon: Eye,
+        tone: "text-sky-400",
+      },
+    ];
 
-    if (role === "admin") {
+    if (role === "admin" || role === "operator") {
       return [
+        ...shared,
         {
-          label: "Active Threats",
-          value: threatsValue,
-          description: "Total stored detections",
-          icon: ShieldAlert,
-          iconClass: "text-red-400",
-          bgClass: "bg-red-500/10",
-        },
-        {
-          label: "Total Detections",
-          value: detectionsValue,
-          description: "AI events tracked",
-          icon: Radio,
-          iconClass: "text-emerald-400",
-          bgClass: "bg-emerald-500/10",
-        },
-        {
-          label: "Live Dashboard",
-          value: liveStats ? String(liveStats.live_dashboard_clients ?? 0) : "—",
-          description: "Connected clients",
+          label: "Watching live",
+          value: clients != null ? String(clients) : "—",
+          hint: "Dashboards connected right now",
           icon: Smartphone,
-          iconClass: "text-blue-400",
-          bgClass: "bg-blue-500/10",
-        },
-        {
-          label: "Connected Stakeholders",
-          value: "—",
-          description: "Active roles",
-          icon: Users,
-          iconClass: "text-purple-400",
-          bgClass: "bg-purple-500/10",
-        },
-      ];
-    }
-
-    if (role === "operator") {
-      return [
-        {
-          label: "Active Threats",
-          value: threatsValue,
-          description: "Requires monitoring",
-          icon: ShieldAlert,
-          iconClass: "text-red-400",
-          bgClass: "bg-red-500/10",
-        },
-        {
-          label: "Live Cameras",
-          value: "18",
-          description: "Currently streaming",
-          icon: Eye,
-          iconClass: "text-emerald-400",
-          bgClass: "bg-emerald-500/10",
-        },
-        {
-          label: "AI Detections",
-          value: detectionsValue,
-          description: "Detected via backend",
-          icon: Zap,
-          iconClass: "text-amber-400",
-          bgClass: "bg-amber-500/10",
-        },
-        {
-          label: "SMS Alerts",
-          value: "64",
-          description: "Dispatched today",
-          icon: Smartphone,
-          iconClass: "text-blue-400",
-          bgClass: "bg-blue-500/10",
-        },
-      ];
-    }
-
-    if (role === "landowner") {
-      return [
-        {
-          label: "Nearby Threats",
-          value: threatsValue,
-          description: "In your assigned zone",
-          icon: ShieldAlert,
-          iconClass: "text-red-400",
-          bgClass: "bg-red-500/10",
-        },
-        {
-          label: "Sensors",
-          value: "08",
-          description: "Monitoring your area",
-          icon: Radio,
-          iconClass: "text-emerald-400",
-          bgClass: "bg-emerald-500/10",
-        },
-        {
-          label: "SMS Alerts",
-          value: "12",
-          description: "Received today",
-          icon: Smartphone,
-          iconClass: "text-blue-400",
-          bgClass: "bg-blue-500/10",
-        },
-        {
-          label: "Safety Status",
-          value: "SAFE",
-          description: "Current zone status",
-          icon: CheckCircle2,
-          iconClass: "text-emerald-400",
-          bgClass: "bg-emerald-500/10",
+          tone: "text-slate-300",
         },
       ];
     }
 
     return [
+      ...shared.slice(0, 2),
       {
-        label: "Village Threats",
-        value: threatsValue,
-        description: "Active in nearby zones",
-        icon: ShieldAlert,
-        iconClass: "text-red-400",
-        bgClass: "bg-red-500/10",
+        label: "Last detection",
+        value: lastSeen ? timeAgo(lastSeen) : "—",
+        hint: detectionLogs[0]?.location || "No detections recorded yet",
+        icon: Clock3,
+        tone: "text-slate-300",
       },
-      {
-        label: "Community Sensors",
-        value: "14",
-        description: "IoT nodes online",
-        icon: Radio,
-        iconClass: "text-emerald-400",
-        bgClass: "bg-emerald-500/10",
-      },
-      {
-        label: "SMS Alerts",
-        value: "31",
-        description: "Community notifications",
-        icon: Smartphone,
-        iconClass: "text-blue-400",
-        bgClass: "bg-blue-500/10",
-      },
-      {
-        label: "Village Status",
-        value: "SAFE",
-        description: "Current village status",
-        icon: CheckCircle2,
-        iconClass: "text-emerald-400",
-        bgClass: "bg-emerald-500/10",
-      },
+      shared[2],
     ];
-  }, [role, liveStats, totalDetections, threatCount]);
+  }, [role, liveStats, threatCount, speciesCount, species, lastSeen, clients, detectionLogs]);
 
-  //recent sightings
-  const demoSightings = [
-  {
-    id: "demo-1",
-    animal: "Elephant",
-    species: "Elephant",
-    location: "Sector B3",
-    confidence: "96%",
-    level: "HIGH",
-    time: "2 min ago",
-    date: new Date().toLocaleDateString(),
-  },
-  {
-    id: "demo-2",
-    animal: "Leopard",
-    species: "Leopard",
-    location: "Sector A4",
-    confidence: "91%",
-    level: "MEDIUM",
-    time: "8 min ago",
-    date: new Date().toLocaleDateString(),
-  },
-  {
-    id: "demo-3",
-    animal: "Human intruder",
-    species: "Human intruder",
-    location: "Reserve Gate 02",
-    confidence: "87%",
-    level: "CRITICAL",
-    time: "14 min ago",
-    date: new Date().toLocaleDateString(),
-  },
-  {
-    id: "demo-4",
-    animal: "No Threat",
-    species: "No Threat",
-    location: "Sector C2",
-    confidence: "98%",
-    level: "LOW",
-    time: "21 min ago",
-    date: new Date().toLocaleDateString(),
-  },
-];
-
-const sightings =
-  detectionLogs.length > 0
-    ? detectionLogs.slice(0, 5)
-    : demoSightings;
-
-  const getAlertClass = (level) => {
-    switch (level) {
-      case "CRITICAL":
-        return "border-red-500/20 bg-red-500/10 text-red-400";
-
-      case "HIGH":
-        return "border-orange-500/20 bg-orange-500/10 text-orange-400";
-
-      case "MEDIUM":
-        return "border-amber-500/20 bg-amber-500/10 text-amber-400";
-
-      default:
-        return "border-emerald-500/20 bg-emerald-500/10 text-emerald-400";
-    }
-  };
-
-  const getAnimalClass = (animal) => {
-    if (animal === "No Threat") {
-      return "text-emerald-400";
-    }
-
-    if (animal === "Human intruder") {
-      return "text-red-400";
-    }
-
-    return "text-slate-100";
-  };
+  const sightings = detectionLogs.length > 0 ? detectionLogs.slice(0, 5) : SAMPLE_SIGHTINGS;
+  const isSample = detectionLogs.length === 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      {/* GREETING */}
+      <section>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-100 sm:text-3xl">
+          Good {timeOfDay()},{" "}
+          <span className="text-emerald-400">{username}</span>
+        </h1>
 
-      {/* WELCOME SECTION */}
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{copy.description}</p>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70">
-
-        <div className="relative p-5 sm:p-6 md:p-7">
-
-          {/* Background decoration */}
-
-          <div className="pointer-events-none absolute -right-20 -top-20 size-64 rounded-full bg-emerald-500/5 blur-3xl" />
-
-          <div className="pointer-events-none absolute -bottom-20 left-1/3 size-48 rounded-full bg-teal-500/5 blur-3xl" />
-
-          <div className="relative">
-
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[12px] font-bold uppercase tracking-wider text-emerald-400">
-
-                <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
-
-                Operations Online
-
-              </span>
-
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[12px] uppercase tracking-wider text-slate-500">
-
-                <MapPin size={10} />
-
-                {location}
-
-              </span>
-
-            </div>
-
-            <h2 className="text-2xl font-bold tracking-tight text-slate-100 sm:text-3xl">
-
-              Welcome back,{" "}
-              <span className="text-emerald-400">
-                {username}
-              </span>
-
-            </h2>
-
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              {roleDescription}
-            </p>
-
-            <div className="mt-4 flex items-center gap-2 text-[13px] uppercase tracking-wider text-slate-500">
-
-              <Shield size={12} className="text-emerald-400" />
-
-              <span>
-                {roleLabel} Access
-              </span>
-
-            </div>
-
-          </div>
-
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <MapPin size={12} />
+            {location}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>{copy.label}</span>
         </div>
-
       </section>
 
-
-      {/* STATISTICS */}
-
+      {/* NUMBERS */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-
         {stats.map((stat) => {
-
           const Icon = stat.icon;
 
           return (
             <div
               key={stat.label}
-              className="group rounded-xl border border-slate-800 bg-slate-950/60 p-4 transition hover:border-slate-700 hover:bg-slate-900/70"
+              className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"
             >
-
-              <div className="flex items-start justify-between gap-3">
-
-                <div>
-
-                  <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
-                    {stat.label}
-                  </p>
-
-                  <p className="mt-2 text-2xl font-bold tracking-tight text-slate-100">
-                    {stat.value}
-                  </p>
-
-                </div>
-
-                <div
-                  className={`grid size-9 shrink-0 place-items-center rounded-lg ${stat.bgClass} ${stat.iconClass}`}
-                >
-                  <Icon size={17} />
-                </div>
-
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[13px] text-slate-400">{stat.label}</p>
+                <Icon size={15} className={stat.tone} />
               </div>
 
-              <p className="mt-2 text-[13px] text-slate-500">
-                {stat.description}
+              <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-slate-100">
+                {stat.value}
               </p>
 
+              <p className="mt-1 truncate text-[12px] text-slate-500" title={stat.hint}>
+                {stat.hint}
+              </p>
             </div>
           );
         })}
-
       </section>
 
+      {/* RECENT ACTIVITY */}
+      <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 px-4 py-3.5">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+              <Activity size={15} className="text-slate-400" />
+              Recent activity
+            </h2>
 
-      {/* MAIN GRID */}
-
-      <section className="grid gap-5">
-
-
-        {/* RECENT SIGHTINGS */}
-
-        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60">
-
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-
-            <div className="flex items-center gap-2">
-
-              <div className="grid size-8 place-items-center rounded-lg bg-red-500/10 text-red-400">
-                <Activity size={15} />
-              </div>
-
-              <div>
-
-                <h3 className="text-xs font-bold text-slate-200">
-                  Recent Wildlife Activity
-                </h3>
-
-                <p className="text-[12px] text-slate-500">
-                  Latest AI and sensor detections
-                </p>
-
-              </div>
-
-            </div>
-
-            <span className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-              Live Feed
-            </span>
-
+            <p className="mt-0.5 text-[13px] text-slate-500">
+              {isSample
+                ? "Sample rows — real detections will replace these."
+                : "The five most recent detections."}
+            </p>
           </div>
 
+          <button
+            type="button"
+            className="flex cursor-pointer items-center gap-1 text-[13px] font-medium text-emerald-400 hover:text-emerald-300"
+            onClick={() =>
+              navigate("/detections", {
+                state: {
+                  detections: detectionLogs.length > 0 ? detectionLogs : SAMPLE_SIGHTINGS,
+                },
+              })
+            }
+          >
+            View all
+            <ChevronRight size={13} />
+          </button>
+        </div>
 
-          {/* SIGHTINGS */}
+        <div className="divide-y divide-slate-900">
+          {sightings.map((sighting) => {
+            const isClear = sighting.animal === "No Threat";
+            const level = sighting.level || "LOW";
 
-          <div className="divide-y divide-slate-900">
-
-            {sightings.map((sighting) => (
-
+            return (
               <div
                 key={sighting.id}
-                className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-900/50"
+                className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-900/40"
               >
-
-                {/* STATUS ICON */}
-
-                <div
-                  className={`grid size-9 shrink-0 place-items-center rounded-lg ${
-                    sighting.level === "CRITICAL"
-                      ? "bg-red-500/10 text-red-400"
-                      : sighting.level === "HIGH"
-                        ? "bg-orange-500/10 text-orange-400"
-                        : sighting.level === "MEDIUM"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-emerald-500/10 text-emerald-400"
-                  }`}
-                >
-
-                  {sighting.animal ===
-                  "No Threat" ? (
-                    <CheckCircle2
-                      size={16}
-                    />
+                <div className="shrink-0">
+                  {isClear ? (
+                    <CheckCircle2 size={16} className="text-emerald-400" />
                   ) : (
                     <AlertTriangle
                       size={16}
+                      className={level === "CRITICAL" ? "text-red-400" : "text-amber-400"}
                     />
                   )}
-
                 </div>
-
-
-                {/* DETAILS */}
 
                 <div className="min-w-0 flex-1">
-
                   <div className="flex flex-wrap items-center gap-2">
-
-                    <p
-                      className={`truncate text-xs font-semibold ${getAnimalClass(
-                        sighting.animal
-                      )}`}
-                    >
-                      {sighting.animal}
-                    </p>
+                    <p className="truncate text-sm text-slate-200">{sighting.animal}</p>
 
                     <span
-                      className={`rounded border px-1.5 py-0.5 text-[11px] font-bold ${getAlertClass(
-                        sighting.level
-                      )}`}
+                      className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${levelStyles[level] || levelStyles.LOW}`}
                     >
-                      {sighting.level}
+                      {level.charAt(0) + level.slice(1).toLowerCase()}
                     </span>
-
                   </div>
 
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
-
-                    <span className="flex items-center gap-1">
-                      <MapPin size={9} />
-                      {sighting.location}
-                    </span>
-
-                    <span>
-                      AI Confidence{" "}
-                      {sighting.confidence}
-                    </span>
-
-                  </div>
-
-                </div>
-
-
-                {/* TIME */}
-
-                <div className="shrink-0 text-right">
-
-                  <p className="text-[12px] text-slate-500">
-                    {sighting.time}
+                  <p className="mt-0.5 truncate text-[13px] text-slate-500">
+                    {sighting.location}
+                    {sighting.confidence ? ` · ${sighting.confidence} confidence` : ""}
                   </p>
-
                 </div>
 
+                <p className="shrink-0 text-[12px] text-slate-500">
+                  {sighting.timestamp ? timeAgo(sighting.timestamp) : "—"}
+                </p>
               </div>
-
-            ))}
-
-          </div>
-
-
-          {/* FOOTER */}
-
-          <div className="border-t border-slate-800 px-4 py-3">
-
-            <button
-              type="button"
-              className="flex cursor-pointer items-center gap-1 text-[12px] font-semibold uppercase tracking-wider text-emerald-400 transition hover:text-emerald-300"
-              onClick={()=>navigate("/detections",{
-                state: {
-                  detections : detectionLogs.length > 0 ? detectionLogs : demoSightings,
-                }
-              })}
-            >
-              View all detections
-              <ChevronRight size={12} />
-            </button>
-
-          </div>
-
+            );
+          })}
         </div>
-
       </section>
 
-
-      {/* OPERATIONAL INFORMATION */}
-
-      {/* <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-
-        <InfoCard
-          icon={Bell}
-          title="Alert Response"
-          description="AI detections are automatically evaluated and classified according to threat severity."
+      {showAllDetections && (
+        <DetectionLogs
+          detectionLogs={detectionLogs}
+          onClose={() => setShowAllDetections(false)}
         />
-
-        <InfoCard
-          icon={Smartphone}
-          title="SMS Notification"
-          description="Critical wildlife alerts can be dispatched to registered stakeholders through SMS."
-        />
-
-        <InfoCard
-          icon={Shield}
-          title="Wildlife Protection"
-          description="WildGuard combines AI classification, IoT sensors, and stakeholder communication."
-        />
-
-      </section> */}
-
-            {/* ALL DETECTION LOGS */}
-
-{showAllDetections && (
-  <DetectionLogs
-    detectionLogs={detectionLogs}
-    onClose={() => setShowAllDetections(false)}
-  />
-)}
-
+      )}
     </div>
   );
 };
 
-
-
-//info card
-
-const InfoCard = ({
-  icon: Icon,
-  title,
-  description,
-}) => {
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 transition hover:border-slate-700 hover:bg-slate-900/60">
-
-      <div className="mb-3 grid size-8 place-items-center rounded-lg bg-emerald-500/10 text-emerald-400">
-
-        <Icon size={15} />
-
-      </div>
-
-      <h3 className="text-xs font-bold text-slate-200">
-        {title}
-      </h3>
-
-      <p className="mt-1.5 text-[13px] leading-5 text-slate-500">
-        {description}
-      </p>
-
-    </div>
-  );
+const timeOfDay = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
 };
-
 
 export default Overview;

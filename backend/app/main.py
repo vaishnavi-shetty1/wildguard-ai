@@ -14,6 +14,7 @@ from .routes import (
     alerts_router,
     logs_router,
     ai_router,
+    notifications_router,
 )
 from .auth import hash_password
 
@@ -111,6 +112,7 @@ app.include_router(sms_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(logs_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Health"])

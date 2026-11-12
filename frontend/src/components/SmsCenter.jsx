@@ -9,6 +9,7 @@ import {
   mapSmsLog,
   sendSos,
 } from "../api";
+import { formatDate } from "../utils/datetime";
 import {
   AlertTriangle,
   Bell,
@@ -642,7 +643,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
       return `${hours}h ago`;
     }
 
-    return timestamp.toLocaleDateString();
+    return formatDate(timestamp);
   };
 
 
@@ -663,34 +664,16 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
           <div>
 
-            <div className="flex flex-wrap items-center gap-2">
-
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[12px] font-bold uppercase tracking-wider text-emerald-400">
-
-                <Smartphone
-                  size={10}
-                />
-
-                SMS Gateway
-
-              </span>
-
-              <span className="rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[12px] uppercase tracking-wider text-slate-500">
-                {roleLabel}
-              </span>
-
-            </div>
-
-            <h1 className="mt-3 text-xl font-bold tracking-tight text-slate-100 sm:text-2xl">
-              SMS Center
+            <h1 className="text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
+              SMS center
             </h1>
 
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-              Send wildlife alerts,
-              emergency notifications,
-              and operational SMS
-              messages to registered
-              stakeholders.
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+              Send an alert, a test, or an emergency message to the people on your list.
+            </p>
+
+            <p className="mt-2 text-[13px] text-slate-500">
+              Signed in as {roleLabel}
             </p>
 
           </div>
@@ -703,13 +686,13 @@ const SmsCenter = ({ currentUser, onNotification }) => {
             onClick={
               sendEmergencySOS
             }
-            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-[13px] font-bold text-red-400 transition hover:bg-red-500/20"
+            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-[13px] font-semibold text-red-400 transition hover:bg-red-500/20"
           >
             <ShieldAlert
               size={14}
             />
 
-            Emergency SOS
+            Send SOS
 
           </button>
 
@@ -730,28 +713,28 @@ const SmsCenter = ({ currentUser, onNotification }) => {
           value={
             totalRecipients
           }
-          description="Active contacts"
+          description="Can receive alerts"
         />
 
         <SmsStat
           icon={Send}
-          label="Messages Sent"
+          label="Sent"
           value={sentCount}
-          description="Current logs"
+          description="Accepted by the carrier"
         />
 
         <SmsStat
           icon={CheckCircle2}
           label="Delivered"
           value={deliveredCount}
-          description="Successfully delivered"
+          description="Confirmed on the phone"
         />
 
         <SmsStat
           icon={AlertTriangle}
           label="Failed"
           value={failedCount}
-          description="Delivery failures"
+          description="Could not be delivered"
         />
 
       </section>
@@ -832,13 +815,12 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <div>
 
-                  <h2 className="text-xs font-bold text-slate-200">
-                    Compose Message
+                  <h2 className="text-xs font-semibold text-slate-200">
+                    Write a message
                   </h2>
 
-                  <p className="text-[12px] text-slate-600">
-                    Create and dispatch
-                    a notification.
+                  <p className="text-[12px] text-slate-500">
+                    It goes out as soon as you send it.
                   </p>
 
                 </div>
@@ -854,7 +836,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
               <div>
 
-                <label className="mb-2 block text-[12px] font-semibold uppercase tracking-wider text-slate-500">
+                <label className="mb-2 block text-[12px] font-semibold text-slate-500">
                   Message Type
                 </label>
 
@@ -929,7 +911,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <div className="mb-2 flex items-center justify-between">
 
-                  <label className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
+                  <label className="text-[12px] font-semibold text-slate-500">
                     Message
                   </label>
 
@@ -948,7 +930,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                       event.target.value
                     )
                   }
-                  placeholder="Enter your SMS notification..."
+                  placeholder="e.g. Elephant near the north boundary. Stay inside until the patrol clears it."
                   rows={5}
                   className="w-full resize-none rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-xs leading-5 text-slate-200 outline-none placeholder:text-slate-700 focus:border-emerald-500/40 focus:ring-4 focus:ring-emerald-500/5"
                 />
@@ -983,7 +965,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                   onClick={
                     sendSms
                   }
-                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-[13px] font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-[13px] font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
 
                   {sending ? (
@@ -1025,18 +1007,17 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <div>
 
-                  <h2 className="text-xs font-bold text-slate-200">
+                  <h2 className="text-xs font-semibold text-slate-200">
                     Recipients
                   </h2>
 
-                  <p className="mt-1 text-[12px] text-slate-600">
-                    Select who receives
-                    this message.
+                  <p className="mt-1 text-[12px] text-slate-500">
+                    Choose who gets this message.
                   </p>
 
                 </div>
 
-                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[12px] font-bold text-emerald-400">
+                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[12px] font-semibold text-emerald-400">
                   {
                     selectedRecipients.length
                   } selected
@@ -1231,20 +1212,19 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div>
 
-              <h2 className="flex items-center gap-2 text-xs font-bold text-slate-200">
+              <h2 className="flex items-center gap-2 text-xs font-semibold text-slate-200">
 
                 <History
                   size={14}
                   className="text-emerald-400"
                 />
 
-                SMS Delivery History
+                Message history
 
               </h2>
 
-              <p className="mt-1 text-[12px] text-slate-600">
-                Complete record of
-                dispatched notifications.
+              <p className="mt-1 text-[12px] text-slate-500">
+                Every message sent from this console.
               </p>
 
             </div>
@@ -1299,23 +1279,23 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <tr className="border-b border-slate-900 text-left">
 
-                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] text-slate-600">
                     Recipient
                   </th>
 
-                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] text-slate-600">
                     Message
                   </th>
 
-                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] text-slate-600">
                     Type
                   </th>
 
-                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] text-slate-600">
                     Status
                   </th>
 
-                  <th className="px-4 py-3 text-[11px] uppercase tracking-wider text-slate-600">
+                  <th className="px-4 py-3 text-[11px] text-slate-600">
                     Time
                   </th>
 
@@ -1433,31 +1413,29 @@ const SmsCenter = ({ currentUser, onNotification }) => {
           <div className="flex items-center justify-between border-b border-slate-800 p-4">
 
             <div>
-              <h2 className="flex items-center gap-2 text-xs font-bold text-slate-200">
+              <h2 className="flex items-center gap-2 text-xs font-semibold text-slate-200">
 
                 <Settings2
                   size={14}
                   className="text-emerald-400"
                 />
 
-                SMS Configuration
+                Settings
 
               </h2>
 
-              <p className="mt-1 text-[12px] text-slate-600">
-                Configure automatic alert
-                notifications and gateway
-                settings.
+              <p className="mt-1 text-[12px] text-slate-500">
+                Choose when WildGuard texts people on its own, and what the message says it is from.
               </p>
             </div>
 
             <button
               type="button"
               onClick={saveSmsConfig}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[13px] font-bold text-emerald-400 transition hover:bg-emerald-500/20"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[13px] font-semibold text-emerald-400 transition hover:bg-emerald-500/20"
             >
               <Save size={13} />
-              Save Settings
+              Save changes
             </button>
 
           </div>
@@ -1474,14 +1452,11 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                 <div>
 
                   <p className="text-xs font-semibold text-slate-300">
-                    Automatic Alerts
+                    Send alerts automatically
                   </p>
 
-                  <p className="mt-1 max-w-sm text-[12px] leading-4 text-slate-600">
-                    Automatically dispatch
-                    SMS when AI detects a
-                    configured wildlife
-                    threat.
+                  <p className="mt-1 max-w-sm text-[12px] leading-4 text-slate-500">
+                    Text the list when a detection matches the species and severity below.
                   </p>
 
                 </div>
@@ -1510,8 +1485,8 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
 
-              <label className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
-                Sender Name
+              <label className="text-[12px] font-semibold text-slate-500">
+                Sender name
               </label>
 
               <input
@@ -1537,8 +1512,8 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
 
-              <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
-                Automatic Alert Levels
+              <p className="text-[12px] font-semibold text-slate-500">
+                Alert levels that trigger a text
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -1580,7 +1555,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                             })
                           )
                         }
-                        className={`cursor-pointer rounded-lg border px-3 py-2 text-[12px] font-bold transition ${
+                        className={`cursor-pointer rounded-lg border px-3 py-2 text-[12px] font-semibold transition ${
                           active
                             ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                             : "border-slate-800 bg-slate-900 text-slate-600"
@@ -1601,8 +1576,8 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
 
-              <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
-                Monitored Species
+              <p className="text-[12px] font-semibold text-slate-500">
+                Animals that trigger a text
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -1685,13 +1660,13 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                   <div>
 
                     <p className="text-xs font-semibold text-slate-300">
-                      SMS Gateway
+                      Delivery
                     </p>
 
-                    <p className="mt-1 text-[12px] text-slate-600">
+                    <p className="mt-1 text-[12px] text-slate-500">
                       {smsConfig.twilioConfigured
-                        ? "Twilio gateway is configured and ready."
-                        : "Gateway is in simulation mode. Configure Twilio for real SMS delivery."}
+                        ? "Twilio is set up, so texts go out for real."
+                        : "Twilio is not set up. Messages are recorded here but no phone receives them."}
                     </p>
 
                   </div>
@@ -1700,7 +1675,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
 
                 <span
-                  className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold ${
+                  className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
                     smsConfig.twilioConfigured
                       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                       : "border-amber-500/20 bg-amber-500/10 text-amber-400"
@@ -1711,7 +1686,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                   {smsConfig.twilioConfigured
                     ? "Connected"
-                    : "Simulation Mode"}
+                    : "Simulated"}
 
                 </span>
 
@@ -1746,23 +1721,23 @@ const SmsStat = ({
 
         <div>
 
-          <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500">
+          <p className="text-[13px] text-slate-400">
             {label}
           </p>
 
-          <p className="mt-2 text-2xl font-bold text-slate-100">
+          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-100">
             {value}
           </p>
 
         </div>
 
-        <div className="grid size-9 place-items-center rounded-lg bg-emerald-500/10 text-emerald-400">
+        <div className="text-slate-500">
           <Icon size={16} />
         </div>
 
       </div>
 
-      <p className="mt-2 text-[12px] text-slate-600">
+      <p className="mt-2 text-[12px] text-slate-500">
         {description}
       </p>
 
@@ -1872,7 +1847,7 @@ const SmsStatus = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-bold ${current.className}`}
+      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-semibold ${current.className}`}
     >
       <Icon size={9} />
       {current.label}

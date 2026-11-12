@@ -7,11 +7,30 @@ import {
   X,
   Trash2,
 } from "lucide-react";
+import { formatDateTime, getDayGroup } from "../utils/datetime";
+
+const groupNotifications = (notifications) => {
+  const groups = [];
+
+  notifications.forEach((notification) => {
+    const label = getDayGroup(notification.timestamp);
+    const group = groups[groups.length - 1];
+
+    if (group && group.label === label) {
+      group.items.push(notification);
+    } else {
+      groups.push({ label, items: [notification] });
+    }
+  });
+
+  return groups;
+};
 
 const NotificationDrawer = ({
   notifications = [],
   onClose,
   onMarkRead,
+  onDelete,
   onClearAll,
 }) => {
 
@@ -79,12 +98,12 @@ const NotificationDrawer = ({
 
           <div>
 
-            <h2 className="text-sm font-bold text-slate-100">
-              System Notifications
+            <h2 className="text-sm font-semibold text-slate-100">
+              Notifications
             </h2>
 
-            <p className="mt-0.5 text-[13px] uppercase tracking-wider text-slate-500">
-              WildGuard Operations Feed
+            <p className="mt-0.5 text-[13px] text-slate-500">
+              Detections, texts, and system messages
             </p>
 
           </div>
@@ -143,7 +162,7 @@ const NotificationDrawer = ({
               </h3>
 
               <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">
-                There are currently no system notifications.
+                Nothing to report right now.
               </p>
 
             </div>
@@ -152,77 +171,111 @@ const NotificationDrawer = ({
 
             <div>
 
-              {notifications.map(
-                (notification) => (
+              {groupNotifications(notifications).map(
+                (group) => (
 
-                  <button
-                    key={notification.id}
-                    type="button"
-                    onClick={() =>
-                      onMarkRead?.(
-                        notification.id
+                  <div key={group.label}>
+
+                    <p className="border-b border-slate-900 bg-slate-900/20 px-5 py-2 text-[12px] font-semibold text-slate-400">
+                      {group.label}
+                    </p>
+
+                    {group.items.map(
+                      (notification) => (
+
+                        <div
+                          key={notification.id}
+                          className={`relative border-b border-slate-900 ${
+                            !notification.read
+                              ? "bg-slate-900/30"
+                              : ""
+                          }`}
+                        >
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onMarkRead?.(
+                                notification.id
+                              )
+                            }
+                            className="flex w-full gap-3 px-5 py-4 pr-12 text-left transition hover:bg-slate-900/70"
+                          >
+
+                            {/* ICON */}
+
+                            <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl border border-slate-800 bg-slate-900">
+                              {getIcon(
+                                notification.type
+                              )}
+                            </div>
+
+                            {/* CONTENT */}
+
+                            <div className="min-w-0 flex-1">
+
+                              <div className="flex items-start justify-between gap-3">
+
+                                <p className="text-xs font-semibold text-slate-200">
+                                  {notification.title}
+                                </p>
+
+                                {!notification.read && (
+                                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-red-400" />
+                                )}
+
+                              </div>
+
+                              <p className="mt-1 text-[14px] leading-5 text-slate-500">
+                                {notification.message}
+                              </p>
+
+                              <div className="mt-2 flex flex-wrap gap-2">
+
+                                {notification.location && (
+                                  <span className="rounded-md bg-slate-900 px-1.5 py-1 text-[12px] text-slate-500">
+                                    {notification.location}
+                                  </span>
+                                )}
+
+                                {notification.alertLevel && (
+                                  <span className="rounded-md bg-red-500/10 px-1.5 py-1 text-[12px] font-semibold text-red-400">
+                                    {notification.alertLevel}
+                                  </span>
+                                )}
+
+                              </div>
+
+                              {notification.timestamp && (
+                                <p className="mt-2 text-[12px] text-slate-500">
+                                  {formatDateTime(notification.timestamp)}
+                                </p>
+                              )}
+
+                            </div>
+
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onDelete?.(
+                                notification.id
+                              )
+                            }
+                            title="Delete notification"
+                            aria-label={`Delete ${notification.title}`}
+                            className="absolute right-3 top-3 grid size-7 place-items-center rounded-lg text-slate-600 transition hover:bg-red-500/10 hover:text-red-400"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+
+                        </div>
+
                       )
-                    }
-                    className={`flex w-full gap-3 border-b border-slate-900 px-5 py-4 text-left transition hover:bg-slate-900/70 ${
-                      !notification.read
-                        ? "bg-slate-900/30"
-                        : ""
-                    }`}
-                  >
+                    )}
 
-                    {/* ICON */}
-
-                    <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl border border-slate-800 bg-slate-900">
-                      {getIcon(
-                        notification.type
-                      )}
-                    </div>
-
-                    {/* CONTENT */}
-
-                    <div className="min-w-0 flex-1">
-
-                      <div className="flex items-start justify-between gap-3">
-
-                        <p className="text-xs font-semibold text-slate-200">
-                          {notification.title}
-                        </p>
-
-                        {!notification.read && (
-                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-red-400" />
-                        )}
-
-                      </div>
-
-                      <p className="mt-1 text-[14px] leading-5 text-slate-500">
-                        {notification.message}
-                      </p>
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-
-                        {notification.location && (
-                          <span className="rounded-md bg-slate-900 px-1.5 py-1 text-[12px] text-slate-500">
-                            {notification.location}
-                          </span>
-                        )}
-
-                        {notification.alertLevel && (
-                          <span className="rounded-md bg-red-500/10 px-1.5 py-1 text-[12px] font-semibold text-red-400">
-                            {notification.alertLevel}
-                          </span>
-                        )}
-
-                      </div>
-
-                      {notification.timestamp && (
-                        <p className="mt-2 font-mono text-[12px] text-slate-600">
-                          {notification.timestamp}
-                        </p>
-                      )}
-
-                    </div>
-
-                  </button>
+                  </div>
 
                 )
               )}

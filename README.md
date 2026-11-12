@@ -253,6 +253,22 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
 `backend/app/database.py` calls `load_dotenv()`, so a `backend/.env` is picked up automatically at import. The dashboard authenticates with a dashboard JWT, so none of these are required to use the UI — they only matter for device/Jetson clients calling `/detections` with `X-Api-Key`, and for signing those JWTs. If `backend/.env` is absent, `API_SECRET_KEY` falls back to the literal `change_me`, which must not be used outside local development.
 
+### Password reset email (Brevo)
+
+Reset links are delivered through Brevo's transactional API. No domain is required, but the sender address must be verified in Brevo:
+
+1. Create a free account at [brevo.com](https://www.brevo.com) (300 emails/day).
+2. Open **Settings → Senders, Domains, IPs → Senders → Add a sender**, enter the From name and From email, then enter the 6-digit code Brevo emails to that address.
+3. Create an API key under **Settings → SMTP & API → API Keys**.
+4. Add both values to `backend/.env`:
+
+```dotenv
+BREVO_API_KEY=your-brevo-api-key
+EMAIL_FROM="WildGuard AI <your-verified-sender@example.com>"
+```
+
+`EMAIL_FROM` must match the verified sender. Free mailboxes (`gmail.com`, `yahoo.com`) can be verified but not authenticated, so they are more likely to be filtered as spam; authenticate a domain in Brevo for production deliverability. Without these values, the forgot-password screen shows the reset link directly in development.
+
 The Jetson integration must use the same `API_SECRET_KEY` and a `BACKEND_URL`. Keep this device key separate from dashboard JWT credentials.
 
 ## Development rules and final demo

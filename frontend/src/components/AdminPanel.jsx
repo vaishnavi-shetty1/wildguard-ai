@@ -43,6 +43,12 @@ const initialLogs = [
 
 const AdminPanel = ({ currentUser, onNotification }) => {
   const canManageUsers = currentUser?.role === "admin";
+  const canCreateUsers = canManageUsers || currentUser?.role === "operator";
+  const canEditUser = (user) =>
+    canManageUsers ||
+    (currentUser?.role === "operator" &&
+      user.createdBy != null &&
+      String(user.createdBy) === String(currentUser.id));
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState(initialLogs);
@@ -236,57 +242,30 @@ const AdminPanel = ({ currentUser, onNotification }) => {
       <div className="mx-auto max-w-7xl space-y-6">
 
         {/* Header */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white md:text-3xl">
+            Control panel
+          </h1>
 
-            <div className="flex items-start gap-4">
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
-                <Shield className="h-7 w-7 text-emerald-400" />
-              </div>
-
-              <div>
-                <p className="text-[13px] font-bold uppercase tracking-[0.18em] text-emerald-400">
-                  {canManageUsers ? "Administrator Console" : "Operator Console"}
-                </p>
-                <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">
-                  Control Panel
-                </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                  Manage WildGuard users, system security, SMS configuration,
-                  and operational activity.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
-              <Lock className="h-4 w-4 text-red-400" />
-              <div>
-                <p className="text-[13px] uppercase tracking-wider text-slate-500">
-                  Access Level
-                </p>
-                <p className="text-sm font-bold text-red-400">
-                  {canManageUsers ? "Administrator" : "Operator"}
-                </p>
-              </div>
-            </div>
-
-          </div>
-        </section>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+            People, activity, text settings, and security in one place.
+          </p>
+        </div>
 
         {/* Statistics */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-          <StatCard icon={Users} label="Total Users" value={statistics.total}/>
-          <StatCard icon={UserCheck} label="Active Users" value={statistics.active}/>
+          <StatCard icon={Users} label="People" value={statistics.total}/>
+          <StatCard icon={UserCheck} label="Active accounts" value={statistics.active}/>
           <StatCard icon={UserCog} label="Operators" value={statistics.operators}/>
           <StatCard icon={Shield} label="Stakeholders" value={statistics.stakeholders}/>
-          <StatCard icon={AlertTriangle} label="Security Events" value={statistics.suspicious} danger/>
+          <StatCard icon={AlertTriangle} label="Security events" value={statistics.suspicious} danger/>
         </div>
 
         {/* Navigation */}
         <div className="flex overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/70 p-1">
-          <AdminTab active={activeSection === "users"} onClick={() => setActiveSection("users")} icon={Users} label="User Management"/>
-          <AdminTab active={activeSection === "logs"} onClick={() => setActiveSection("logs")} icon={Activity} label="System Logs"/>
-          <AdminTab active={activeSection === "sms"} onClick={() => setActiveSection("sms")} icon={MessageSquare} label="SMS Configuration"/>
+          <AdminTab active={activeSection === "users"} onClick={() => setActiveSection("users")} icon={Users} label="People"/>
+          <AdminTab active={activeSection === "logs"} onClick={() => setActiveSection("logs")} icon={Activity} label="Activity log"/>
+          <AdminTab active={activeSection === "sms"} onClick={() => setActiveSection("sms")} icon={MessageSquare} label="SMS settings"/>
           <AdminTab active={activeSection === "security"} onClick={() => setActiveSection("security")} icon={Lock} label="Security"/>
         </div>
 
@@ -295,16 +274,18 @@ const AdminPanel = ({ currentUser, onNotification }) => {
           <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70">
             <div className="flex flex-col gap-4 border-b border-slate-800 p-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="font-bold text-white">
-                  User Management
+                <h2 className="font-semibold text-white">
+                  People
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  Create, modify, activate, and deactivate system users.
+                  {canManageUsers
+                    ? "Create, modify, activate, and deactivate system users."
+                    : "Add people, and manage the accounts you created."}
                 </p>
               </div>
 
-              {canManageUsers ? (
-                <button type="button" onClick={openAddUser} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-emerald-400">
+              {canCreateUsers ? (
+                <button type="button" onClick={openAddUser} className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
                   <Plus className="h-4 w-4" />Add User
                 </button>
               ) : (
@@ -335,7 +316,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
             <div className="overflow-x-auto">
               <table className="w-full min-w-225">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[13px] uppercase tracking-wider text-slate-500">
+                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[13px] text-slate-500">
                     <th className="px-5 py-3">User</th>
                     <th className="px-5 py-3">Role</th>
                     <th className="px-5 py-3">Location</th>
@@ -350,7 +331,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                     <tr key={user.id} className="border-b border-slate-900 hover:bg-slate-900/40">
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 font-bold text-emerald-400">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 font-semibold text-emerald-400">
                             {user.username.charAt(0).toUpperCase()}
                           </div>
 
@@ -404,7 +385,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
 
-                          {canManageUsers ? (
+                          {canEditUser(user) ? (
                             <>
 
                               <button type="button" onClick={() => openEditUser(user)} title="Edit user" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:border-emerald-500/30 hover:text-emerald-400">
@@ -420,9 +401,11 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                                 )}
                               </button>
 
-                              <button type="button" onClick={() => deleteUser(user.id)} title="Delete user" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:text-red-400">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              {canManageUsers && (
+                                <button type="button" onClick={() => deleteUser(user.id)} title="Delete user" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 transition hover:text-red-400">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
 
                             </>
                           ) : (
@@ -454,7 +437,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
         {activeSection === "logs" && (
           <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70">
             <div className="border-b border-slate-800 p-5">
-              <h2 className="font-bold text-white">
+              <h2 className="font-semibold text-white">
                 System Activity Logs
               </h2>
               <p className="mt-1 text-xs text-slate-500">
@@ -465,7 +448,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
             <div className="overflow-x-auto">
               <table className="w-full min-w-225">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[13px] uppercase tracking-wider text-slate-500">
+                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[13px] text-slate-500">
                     <th className="px-5 py-3">Timestamp</th>
                     <th className="px-5 py-3">User</th>
                     <th className="px-5 py-3">IP Address</th>
@@ -495,12 +478,12 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                       </td>
                       <td className="px-5 py-4">
                         {log.isSuspicious ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-[13px] font-bold text-red-400">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-[13px] font-semibold text-red-400">
                             <AlertTriangle className="h-3 w-3" />
                             Suspicious
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[13px] font-bold text-emerald-400">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[13px] font-semibold text-emerald-400">
                             <CheckCircle2 className="h-3 w-3" />
                             Normal
                           </span>
@@ -525,7 +508,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                   <MessageSquare className="h-5 w-5 text-emerald-400" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-white">
+                  <h2 className="font-semibold text-white">
                     SMS Alert Configuration
                   </h2>
                   <p className="mt-1 text-xs text-slate-500">
@@ -571,7 +554,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                         Twilio integration status
                       </p>
                     </div>
-                    <span className={`rounded-lg px-2.5 py-1 text-[13px] font-bold ${ smsConfig.twilioConfigured ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border border-yellow-500/20 bg-yellow-500/10 text-yellow-400" }`}>
+                    <span className={`rounded-lg px-2.5 py-1 text-[13px] font-semibold ${ smsConfig.twilioConfigured ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border border-yellow-500/20 bg-yellow-500/10 text-yellow-400" }`}>
                       {smsConfig.twilioConfigured ? "CONNECTED" : "SIMULATED"}
                     </span>
                   </div>
@@ -606,10 +589,10 @@ const AdminPanel = ({ currentUser, onNotification }) => {
         {/* Footer */}
         <div className="flex flex-col gap-2 border-t border-slate-900 pt-4 text-[13px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
           <span>
-            WILDGUARD AI • Administrator Control Panel
+            WildGuard · {canManageUsers ? "administrator" : "operator"} access
           </span>
           <span>
-            Role-Based Access Control Enabled
+            Permissions are checked on the server
           </span>
         </div>
 
@@ -621,11 +604,8 @@ const AdminPanel = ({ currentUser, onNotification }) => {
           <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#09191d] shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
               <div>
-                <p className="text-[13px] font-bold uppercase tracking-wider text-emerald-400">
-                  Administration
-                </p>
-                <h2 className="mt-1 text-lg font-bold text-white">
-                  {editingUser ? "Edit User" : "Create User"}
+                <h2 className="text-lg font-semibold text-white">
+                  {editingUser ? "Edit user" : "Add user"}
                 </h2>
               </div>
               <button type="button" onClick={() => { setShowModal(false); resetForm();}} className="rounded-lg p-2 text-slate-500 hover:bg-slate-800 hover:text-slate-200">
@@ -649,7 +629,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                   <option value="operator">Operator</option>
                   <option value="landowner">Landowner</option>
                   <option value="village_head">Village Head</option>
-                  <option value="admin">Admin</option>
+                  {canManageUsers && <option value="admin">Admin</option>}
                 </select>
               </div>
 
@@ -673,7 +653,7 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                 <button type="button" onClick={() => { setShowModal(false); resetForm(); }} className="flex-1 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-400 hover:bg-slate-800">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-400">
+                <button type="submit" className="flex-1 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400">
                   {editingUser ? "Save Changes" : "Create User"}
                 </button>
 
@@ -695,8 +675,8 @@ const StatCard = ({ icon: Icon, label, value, danger = false,}) => {
       <div className={`flex h-9 w-9 items-center justify-center rounded-lg border ${ danger ? "border-red-500/20 bg-red-500/10" : "border-emerald-500/20 bg-emerald-500/10" }`}>
         <Icon className={`h-4 w-4 ${ danger ? "text-red-400" : "text-emerald-400"}`}/>
       </div>
-      <p className="mt-3 text-[13px] uppercase tracking-wider text-slate-600">{label}</p>
-      <p className={`mt-1 text-2xl font-bold ${ danger ? "text-red-400" : "text-slate-100"}`}> {value}</p>
+      <p className="mt-3 text-[13px] text-slate-400">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold tabular-nums ${ danger ? "text-red-400" : "text-slate-100"}`}> {value}</p>
     </div>
   );
 };
@@ -719,7 +699,7 @@ const RoleBadge = ({ role }) => {
     village_head: "Village Head",
   };
   return (
-    <span className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-[13px] font-bold text-slate-300">{labels[role] || role} </span>
+    <span className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-[13px] font-semibold text-slate-300">{labels[role] || role} </span>
   );
 };
 
@@ -735,9 +715,8 @@ const AdminInput = ({ label, type = "text", value, onChange, placeholder, requir
 const ToggleSetting = ({ label, description, enabled, onChange,}) => {
   return (
     <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-      <div className="pr-4">
-        <p className="text-sm font-semibold text-slate-200">{label}</p>
-        <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
+      <div className="pr-4">            <p className="text-sm font-semibold text-slate-200">{label}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
       </div>
       <button type="button" onClick={() => onChange(!enabled)} className={`relative h-6 w-11 shrink-0 rounded-full transition ${ enabled ? "bg-emerald-500" : "bg-slate-700"}`}>
         <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${ enabled ? "left-6" : "left-1"}`}/>
@@ -755,8 +734,8 @@ const SecurityCard = ({ icon: Icon, title, description, children,}) => {
           <Icon className="h-5 w-5 text-emerald-400" />
         </div>
         <div>
-          <h2 className="font-bold text-white">{title}</h2>
-          <p className="mt-1 text-xs text-slate-600"> {description}</p>
+          <h2 className="font-semibold text-white">{title}</h2>
+          <p className="mt-1 text-xs text-slate-500"> {description}</p>
         </div>
       </div>
       <div className="space-y-2"> {children}</div>
@@ -767,8 +746,8 @@ const SecurityCard = ({ icon: Icon, title, description, children,}) => {
 const SecurityRow = ({ label, value, danger = false,}) => {
   return (
     <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
-      <span className="text-xs text-slate-500"> {label}</span>
-      <span className={`text-xs font-bold ${ danger ? "text-red-400" : "text-emerald-400"}`}> {value}</span>
+      <span className="text-[13px] text-slate-400"> {label}</span>
+      <span className={`text-xs font-semibold ${ danger ? "text-red-400" : "text-emerald-400"}`}> {value}</span>
     </div>
   );
 };

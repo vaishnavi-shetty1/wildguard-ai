@@ -1,6 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 
-const AuthLayout = ({ children, eyebrow, title, description,}) => {
+const AuthLayout = ({ children, title, description }) => {
   return (
     <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(76,175,120,.18),transparent_28%),linear-gradient(135deg,#071a1d_0%,#0d2a2d_45%,#0a1418_100%)] p-4 sm:p-6 ">
 
@@ -22,18 +22,12 @@ const AuthLayout = ({ children, eyebrow, title, description,}) => {
 
           <div>
 
-            <p className="mb-2.5 text-[.85rem] font-bold uppercase tracking-[.18em] text-[#d8f6e9]">
-              Wildlife protection dashboard
-            </p>
-
-            <h1 className="max-w-105 text-[clamp(2.2rem,4vw,3.5rem)] font-bold leading-[1.05] tracking-[-.04em] text-[#f5fffb]">
-              WILDGUARD{" "} <span className="text-emerald-400"> AI </span>
+            <h1 className="max-w-105 text-[clamp(2.2rem,4vw,3.5rem)] font-semibold leading-[1.05] tracking-[-.04em] text-[#f5fffb]">
+              WildGuard{" "} <span className="text-emerald-400"> AI </span>
             </h1>
 
             <p className="mt-4 max-w-107.5 leading-[1.7] text-[#d2e2dccc]">
-              Monitor sightings, field alerts,
-              and safety operations in real time
-              across every protected zone.
+              Keeping an eye on wildlife near the places people live and work.
             </p>
 
           </div>
@@ -46,11 +40,7 @@ const AuthLayout = ({ children, eyebrow, title, description,}) => {
 
           <div className="mb-5 shrink-0">
 
-            <p className="mb-2 text-[.85rem] font-bold uppercase tracking-[.18em] text-[#7fe6b4]">
-              {eyebrow}
-            </p>
-
-            <h2 className="mb-2 text-[clamp(1.9rem,2vw,2.5rem)] font-bold tracking-[-.04em] text-[#f5fffb]">
+            <h2 className="mb-2 text-[clamp(1.9rem,2vw,2.5rem)] font-semibold tracking-[-.04em] text-[#f5fffb]">
               {title}
             </h2>
 

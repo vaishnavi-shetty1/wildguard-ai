@@ -530,12 +530,12 @@ const LiveMonitor = ({
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-slate-100">
-              Live Wildlife Monitor
+            <h2 className="text-xl font-semibold text-slate-100">
+              Live monitor
             </h2>
 
             <p className="text-xs text-slate-500">
-              AI-powered real-time wildlife detection
+              Point your camera at a trail and WildGuard will label whatever walks past.
             </p>
           </div>
         </div>
@@ -572,16 +572,16 @@ const LiveMonitor = ({
               />
 
               <p className="mb-4 text-sm text-slate-400">
-                Camera is not active
+                Your camera is off
               </p>
 
               <button
                 type="button"
                 onClick={startCamera}
-                className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-emerald-400"
+                className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
               >
                 <Camera size={17} />
-                Start Camera
+                Turn on camera
               </button>
 
             </div>
@@ -592,13 +592,10 @@ const LiveMonitor = ({
           {cameraState?.isActive && (
             <div className="absolute left-3 top-3 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-slate-950/80 px-3 py-2 backdrop-blur">
 
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                <span className="relative size-2 rounded-full bg-emerald-400" />
-              </span>
+              <span className="size-2 rounded-full bg-emerald-400" />
 
-              <span className="text-[13px] font-bold uppercase tracking-wider text-emerald-400">
-                Camera Live
+              <span className="text-[13px] font-medium text-emerald-400">
+                Live
               </span>
 
             </div>
@@ -620,10 +617,10 @@ const LiveMonitor = ({
               {isScanning
                 ? isCloudProvider
                   ? roboflow.status === "streaming"
-                    ? "Roboflow cloud stream active"
-                    : "Connecting to Roboflow..."
-                  : "AI scanning active"
-                : "AI scanning paused"}
+                    ? "Streaming from Roboflow"
+                    : "Connecting to Roboflow…"
+                  : "Scanning the feed"
+                : "Scan paused"}
             </p>
           </div>
 
@@ -679,7 +676,7 @@ const LiveMonitor = ({
                 onClick={
                   toggleScanning
                 }
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition ${
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${
                   isScanning
                     ? "bg-red-500/10 text-red-400 border border-red-500/20"
                     : "bg-emerald-500 text-slate-950"
@@ -688,12 +685,12 @@ const LiveMonitor = ({
                 {isScanning ? (
                   <>
                     <Scan size={15} />
-                    Stop Scanning
+                    Stop scan
                   </>
                 ) : (
                   <>
                     <Scan size={15} />
-                    Start AI Scan
+                    Start scan
                   </>
                 )}
               </button>
@@ -705,7 +702,7 @@ const LiveMonitor = ({
                 onClick={stopCamera}
                 className="rounded-lg border border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800"
               >
-                Stop Camera
+                Turn off camera
               </button>
             )}
 
@@ -744,8 +741,8 @@ const LiveMonitor = ({
           />
 
           <div className="min-w-0">
-            <p className="text-xs font-bold text-amber-300">
-              Roboflow stream failed
+            <p className="text-xs font-semibold text-amber-300">
+              Roboflow stream stopped
             </p>
 
             <p className="mt-1 text-[13px] leading-4 text-amber-200/70">
@@ -768,7 +765,7 @@ const LiveMonitor = ({
             />
 
             <div className="min-w-0">
-              <p className="text-xs font-bold text-amber-300">
+              <p className="text-xs font-semibold text-amber-300">
                 Loaded checkpoint cannot detect{" "}
                 {modelInfo.missing_target_species.join(", ")}
               </p>
@@ -798,12 +795,12 @@ const LiveMonitor = ({
         <div className="mb-4 flex items-center justify-between">
 
           <div>
-            <h3 className="text-sm font-bold text-slate-100">
-              Latest Prediction
+            <h3 className="text-sm font-semibold text-slate-100">
+              Latest detection
             </h3>
 
             <p className="text-[13px] text-slate-500">
-              Result from camera analysis
+              What the last frame contained
             </p>
           </div>
 
@@ -815,7 +812,7 @@ const LiveMonitor = ({
                 className="animate-spin"
               />
 
-              <span className="text-[13px] font-bold uppercase">
+              <span className="text-[13px] font-medium">
                 Scanning
               </span>
 
@@ -834,24 +831,19 @@ const LiveMonitor = ({
               </div>
 
               <div>
-                <p className="text-lg font-bold text-slate-100">
+                <p className="text-lg font-semibold text-slate-100">
                   {prediction.species}
                 </p>
 
                 <p className="text-xs text-slate-500">
-                  Confidence:{" "}
-                  {Math.round(
-                    prediction.confidence *
-                      100
-                  )}
-                  %
+                  {Math.round(prediction.confidence * 100)}% confident
                 </p>
               </div>
 
             </div>
 
             <div
-              className={`rounded-lg px-3 py-1.5 text-[13px] font-bold uppercase ${
+              className={`rounded-lg px-3 py-1.5 text-[13px] font-semibold ${
                 prediction.threatLevel ===
                 "HIGH"
                   ? "bg-red-500/10 text-red-400"
@@ -861,7 +853,7 @@ const LiveMonitor = ({
                   : "bg-emerald-500/10 text-emerald-400"
               }`}
             >
-              {prediction.threatLevel}
+              {capitalize(prediction.threatLevel)}
             </div>
 
           </div>
@@ -874,7 +866,7 @@ const LiveMonitor = ({
             />
 
             <p className="text-xs text-slate-500">
-              No wildlife detected yet.
+              Nothing in frame yet. Detections show up here while you scan.
             </p>
 
           </div>
@@ -885,5 +877,7 @@ const LiveMonitor = ({
     </section>
   );
 };
+
+const capitalize = (value = "") => value.charAt(0) + value.slice(1).toLowerCase();
 
 export default LiveMonitor;

@@ -6,14 +6,24 @@ import Overview from "../components/Overview";
 import LiveMonitor from "../components/LiveMonitor";
 import SmsCenter from "../components/SmsCenter";
 import StakeholderPortal from "../components/StakeholderPortal";
-import ClassifierTraining from "../components/ClassifierTraining";
 import AdminPanel from "../components/AdminPanel";
 import DetectionLogs from "../components/DetectionLogs";
 import NotificationToast from "../components/NotificationToast";
 import NotificationDrawer from "../components/NotificationDrawer";
 import { handleWildlifePrediction } from "../utils/handleWildlifePrediction";
 import { playNotificationSound, playThreatAlert, playSmsSound, playCameraConnectedSound, playCameraDisconnectedSound } from "../utils/audio";
-import { fetchDetections, mapBackendDetection, getCurrentUser } from "../api";
+import {
+  fetchDetections,
+  mapBackendDetection,
+  getCurrentUser,
+  fetchNotifications,
+  mapBackendNotification,
+  createNotification,
+  markNotificationReadRequest,
+  markAllNotificationsReadRequest,
+  deleteNotificationRequest,
+  clearNotificationsRequest,
+} from "../api";
 import { useWebSocket } from "../hooks/useWebSocket";
 
 const ROLE_TABS = {
@@ -21,7 +31,6 @@ const ROLE_TABS = {
     "home",
     "dashboard",
     "sms",
-    "training",
     "admin",
   ],
   operator: [
@@ -113,6 +122,39 @@ const HomePage = () => {
     return () => { cancelled = true; };
   }, [navigate]);
 
+  //load the notifications saved for this user
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let cancelled = false;
+
+    fetchNotifications(100)
+      .then((rows) => {
+        if (cancelled) return;
+        const saved = (rows || []).map(mapBackendNotification);
+        setNotifications((current) => {
+          const savedIds = new Set(saved.map((item) => item.id));
+          const savedClientIds = new Set(
+            saved.map((item) => item.clientId).filter(Boolean)
+          );
+          // Keep anything added while the request was in flight
+          const pending = current.filter(
+            (item) =>
+              !savedIds.has(item.id) &&
+              !(item.clientId && savedClientIds.has(item.clientId))
+          );
+          return [...pending, ...saved].slice(0, 100);
+        });
+      })
+      .catch((error) => {
+        console.warn("Could not load saved notifications:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
   //load detections from backend
   useEffect(() => {
     let cancelled = false;
@@ -146,10 +188,11 @@ const HomePage = () => {
           return [mapped, ...current].slice(0, 500);
         });
         addNotification({
-          id: `ws-${mapped.id}-${Date.now()}`,
+          id: `ws-${mapped.id}`,
           title: "Wildlife Detected",
           message: `${mapped.animal} identified by AI (confidence ${mapped.confidence}).`,
           type: "threat",
+          timestamp: mapped.timestamp,
         });
       }
     },
@@ -220,6 +263,33 @@ const HomePage = () => {
     }
   };
 
+  //save notification to the user's history
+  const persistNotification = (notification) => {
+    createNotification({
+      client_id: notification.clientId,
+      title: notification.title,
+      message: notification.message || "",
+      type: notification.type,
+      location: notification.location || null,
+      alert_level: notification.alertLevel || notification.threatLevel || null,
+      created_at: notification.timestamp,
+    })
+      .then((saved) => {
+        if (!saved) return;
+        // Swap the temporary id for the stored one
+        setNotifications((current) =>
+          current.map((item) =>
+            item.clientId === notification.clientId
+              ? { ...item, id: String(saved.id), clientId: saved.client_id || notification.clientId }
+              : item
+          )
+        );
+      })
+      .catch((error) => {
+        console.warn("Notification could not be saved:", error.message);
+      });
+  };
+
   //add notification
   const addNotification = (notification,playSound = true) => {
     const newNotification = {
@@ -229,13 +299,18 @@ const HomePage = () => {
       type: notification.type || "system",
       ...notification
     };
+    newNotification.clientId = notification.clientId || String(newNotification.id);
     //add notification history
-    setNotifications((current) => [ newNotification, ...current ].slice(0, 30));
+    setNotifications((current) => [ newNotification, ...current ].slice(0, 100));
     //show toast notification
     setToastNotification(newNotification);
     //play sound
     if (playSound) {
       playNotificationAudio( newNotification);
+    }
+    //store it for the next login
+    if (currentUser) {
+      persistNotification(newNotification);
     }
   };
 
@@ -246,11 +321,29 @@ const HomePage = () => {
   //mark notification as read
   const markNotificationRead = ( id ) => {
     setNotifications((current) =>current.map((notification) =>notification.id === id ? { ...notification, read: true } : notification));
+    if (/^\d+$/.test(String(id))) {
+      markNotificationReadRequest(id).catch((error) => {
+        console.warn("Could not mark notification as read:", error.message);
+      });
+    }
+  };
+
+  //delete a single notification
+  const removeNotification = (id) => {
+    setNotifications((current) => current.filter((notification) => notification.id !== id));
+    if (/^\d+$/.test(String(id))) {
+      deleteNotificationRequest(id).catch((error) => {
+        console.warn("Could not delete notification:", error.message);
+      });
+    }
   };
 
   //clear notifications
   const clearNotifications = () => {
     setNotifications([]);
+    clearNotificationsRequest().catch((error) => {
+      console.warn("Could not clear saved notifications:", error.message);
+    });
   };
 
   //logout
@@ -265,7 +358,6 @@ const HomePage = () => {
     //clear authentication
     localStorage.removeItem("wildguard_user" );
     localStorage.removeItem( "wildguard_token" );
-    localStorage.removeItem("wildguard_remember");
     setCurrentUser(null);
     navigate("/login", { replace: true});
   };
@@ -278,42 +370,15 @@ const HomePage = () => {
     setShowNotifications(true);
     //mark all read
     setNotifications((current) => current.map((notification) => ({ ...notification, read: true})));
+    markAllNotificationsReadRequest().catch((error) => {
+      console.warn("Could not update read state:", error.message);
+    });
   };
 
   //close notification drawer
   const closeNotifications = () => {
     setShowNotifications(false);
   };
-
-  //initialize system notifications
-  useEffect(() => {
-    setNotifications([
-      {
-        id: "system-1",
-        title: "Wildlife Monitoring Active",
-        message: "All connected surveillance nodes are operational.",
-        type: "system",
-        read: false,
-        timestamp: new Date().toISOString()
-      },
-      {
-        id: "sms-1",
-        title: "SMS Gateway Ready",
-        message: "WildGuard SMS notification service is ready.",
-        type: "sms",
-        read: false,
-        timestamp: new Date().toISOString()
-      },
-      {
-        id: "ai-1",
-        title: "AI Classifier Online",
-        message: "Wildlife classification model is ready for monitoring.",
-        type: "ai",
-        read: true,
-        timestamp: new Date().toISOString()
-      },
-    ]);
-  }, []);
 
   //camera cleanup
   useEffect(() => {
@@ -393,18 +458,6 @@ const HomePage = () => {
       );
     }
 
-    //classifier training
-    if ( activeTab === "training" ) {
-      if ( currentUser.role !== "admin" ) {
-        return (
-          <AccessDenied role={currentUser.role}/>
-        );
-      }
-      return (
-        <ClassifierTraining currentUser={currentUser} onNotification={addNotification}/>
-      );
-    }
-
     //admin panel
     if ( activeTab === "admin" ) {
       if ( currentUser.role !== "admin" && currentUser.role !== "operator" ) {
@@ -439,7 +492,7 @@ const HomePage = () => {
 
       {/* notification drawer */}
       {showNotifications && (
-        <NotificationDrawer notifications={notifications} onClose={ closeNotifications} onMarkRead={markNotificationRead} onClearAll={clearNotifications}/>
+        <NotificationDrawer notifications={notifications} onClose={ closeNotifications} onMarkRead={markNotificationRead} onDelete={removeNotification} onClearAll={clearNotifications}/>
       )}
 
     </div>
@@ -454,13 +507,13 @@ const AccessDenied = ({role}) => {
           <AlertTriangle size={28}/>
         </div>
 
-        <h2 className="mb-2 text-xl font-bold text-slate-100">Access Restricted</h2>
+        <h2 className="mb-2 text-xl font-semibold text-slate-100">Access Restricted</h2>
 
         <p className="mb-4 text-sm leading-6 text-slate-400">
           Your current role does not have permission to access this WildGuard module.
         </p>
 
-        <div className="inline-flex items-center rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-slate-400">
+        <div className="inline-flex items-center rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400">
           Role: {role}
         </div>
       </div>
