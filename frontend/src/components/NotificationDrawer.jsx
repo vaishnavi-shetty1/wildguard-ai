@@ -37,6 +37,7 @@ const NotificationDrawer = ({
   const getIcon = (type) => {
     switch (type) {
       case "threat":
+      case "emergency_sos":
         return (
           <AlertTriangle
             size={15}

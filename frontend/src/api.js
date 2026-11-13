@@ -69,6 +69,11 @@ export function fetchUsers() {
   return request("/users");
 }
 
+// Every signed-in role may read the user directory (used for SMS recipients).
+export function fetchAllUsers() {
+  return request("/users/all");
+}
+
 export function createUser(payload) {
   return request("/users", {
     method: "POST",
@@ -91,6 +96,10 @@ export function deleteUser(id) {
 
 export function getSmsConfig() {
   return request("/sms/config");
+}
+
+export function fetchSmsStatus() {
+  return request("/sms/status");
 }
 
 export function updateSmsConfig(payload) {
@@ -309,6 +318,7 @@ export function mapSmsLog(l) {
     triggerType: l.trigger_type || "manual_broadcast",
     sightingId: l.sighting_id,
     sector: l.sector || "",
+    sentBy: l.sent_by || "",
   };
 }
 

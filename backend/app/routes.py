@@ -23,7 +23,8 @@ from .schemas import (
     PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse,
     AIPredictRequest, AIPredictResponse, AIModelInfoOut,
 )
-from .notifications import send_sms_alerts
+from .notifications import build_alert_message, deliver_sms
+from .sms_sender import gateway_status, is_sms_configured
 from .emailer import send_password_reset_email, is_email_configured
 from .websocket_manager import manager
 from .auth import (
@@ -128,18 +129,53 @@ async def create_detection(
     await db.commit()
     await db.refresh(detection)
 
-    # Send SMS alerts (runs synchronously here; move to background task if needed)
-    sms_ok, sms_err = send_sms_alerts(
-        species=detection.species,
-        confidence=detection.confidence,
-        latitude=detection.latitude,
-        longitude=detection.longitude,
-        gps_fix=detection.gps_fix,
-        device_id=detection.device_id,
-        detection_id=detection.id,
-    )
+    # Send SMS alerts to every enabled stakeholder with a number on file,
+    # honouring the auto-alert settings saved in the SMS center.
+    sms_ok, sms_err = False, None
+    try:
+        config = await _get_or_create_sms_config(db)
+        alert_level = _threat_level(detection.species, detection.confidence)
+        wanted_species = _parse_json(
+            config.selected_species, ["elephant", "tiger", "leopard"]
+        )
+        wanted_levels = _parse_json(config.alert_levels, ["HIGH", "CRITICAL"])
+
+        if not config.auto_alert_enabled:
+            logger.info("Auto SMS alerts are off - detection #%d not broadcast", detection.id)
+        elif detection.species not in wanted_species:
+            logger.info("Species %s is not on the SMS alert list - skipped", detection.species)
+        elif alert_level not in wanted_levels:
+            logger.info("Alert level %s is below the SMS alert levels - skipped", alert_level)
+        else:
+            result = await db.execute(
+                select(User).where(
+                    User.is_active == True,  # noqa: E712
+                    User.sms_alerts_enabled == True,  # noqa: E712
+                )
+            )
+            sms_ok, sms_err, _logs = await deliver_sms(
+                db,
+                result.scalars().all(),
+                build_alert_message(
+                    detection.species,
+                    detection.confidence,
+                    detection.latitude,
+                    detection.longitude,
+                    detection.gps_fix,
+                    detection.device_id,
+                ),
+                trigger_type="auto_detection",
+                sector=detection.device_id,
+                sighting_id=f"WG-{detection.id}",
+                sent_by="system",
+            )
+    except Exception:
+        await db.rollback()
+        sms_err = "SMS delivery failed unexpectedly"
+        logger.exception("SMS alert for detection #%d failed", detection.id)
+
     detection.sms_sent = sms_ok
-    detection.sms_error = sms_err
+    detection.sms_error = (sms_err or "")[:256] or None
     await db.commit()
 
     # Save a notification for every active user so alerts survive a logout
@@ -712,19 +748,33 @@ async def _get_or_create_sms_config(db: AsyncSession) -> SmsConfig:
     return config
 
 
+def _sms_config_out(config: SmsConfig) -> SmsConfigOut:
+    """Config row plus the live provider state, which comes from the env."""
+    return SmsConfigOut(
+        auto_alert_enabled=config.auto_alert_enabled,
+        alert_levels=_parse_json(config.alert_levels, ["HIGH", "CRITICAL"]),
+        selected_species=_parse_json(config.selected_species, ["elephant", "tiger", "leopard", "unknown"]),
+        default_sender_name=config.default_sender_name,
+        sms_configured=is_sms_configured(),
+        sms_provider="textbee",
+    )
+
+
+@sms_router.get("/status", summary="Check the TextBee gateway connection")
+async def get_sms_status(
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Pings TextBee so the dashboard can tell a bad key from a missing one."""
+    return await gateway_status()
+
+
 @sms_router.get("/config", response_model=SmsConfigOut, summary="Get SMS configuration")
 async def get_sms_config(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SmsConfigOut:
     config = await _get_or_create_sms_config(db)
-    return SmsConfigOut(
-        auto_alert_enabled=config.auto_alert_enabled,
-        alert_levels=_parse_json(config.alert_levels, ["HIGH", "CRITICAL"]),
-        selected_species=_parse_json(config.selected_species, ["elephant", "tiger", "leopard", "unknown"]),
-        default_sender_name=config.default_sender_name,
-        twilio_configured=False,
-    )
+    return _sms_config_out(config)
 
 
 @sms_router.put("/config", response_model=SmsConfigOut, summary="Update SMS configuration")
@@ -739,18 +789,12 @@ async def update_sms_config(
         config.alert_levels = json.dumps(update_data["alert_levels"])
     if "selected_species" in update_data:
         config.selected_species = json.dumps(update_data["selected_species"])
-    for field in ("auto_alert_enabled", "default_sender_name", "twilio_configured"):
+    for field in ("auto_alert_enabled", "default_sender_name"):
         if field in update_data:
             setattr(config, field, update_data[field])
     await db.commit()
     await db.refresh(config)
-    return SmsConfigOut(
-        auto_alert_enabled=config.auto_alert_enabled,
-        alert_levels=_parse_json(config.alert_levels, ["HIGH", "CRITICAL"]),
-        selected_species=_parse_json(config.selected_species, ["elephant", "tiger", "leopard", "unknown"]),
-        default_sender_name=config.default_sender_name,
-        twilio_configured=False,
-    )
+    return _sms_config_out(config)
 
 
 @sms_router.post("/send", response_model=list[SmsLogOut], status_code=201, summary="Send an SMS broadcast to recipients")
@@ -770,35 +814,30 @@ async def send_sms(
     if not recipients:
         raise HTTPException(status_code=400, detail="No recipients selected")
 
-    config = await _get_or_create_sms_config(db)
-    # Outbound delivery was removed with the Twilio integration, so every
-    # broadcast is recorded as simulated and nothing leaves the machine.
-    twilio_active = False
+    _sent, sms_error, created_logs = await deliver_sms(
+        db,
+        recipients,
+        payload.message,
+        trigger_type=payload.trigger_type,
+        sector=payload.sector,
+        sighting_id=payload.sighting_id,
+        sent_by=current_user.username,
+    )
 
-    created_logs = []
-    for recipient in recipients:
-        log = SmsLog(
-            recipient_phone=recipient.phone,
-            recipient_name=recipient.username,
-            recipient_role=recipient.role,
-            message=payload.message,
-            status="sent" if twilio_active else "simulated",
-            trigger_type=payload.trigger_type,
-            sector=payload.sector or recipient.location_name,
-            sighting_id=payload.sighting_id,
+    if not created_logs:
+        raise HTTPException(
+            status_code=400,
+            detail="Selected recipients have no phone number on file",
         )
-        db.add(log)
-        created_logs.append(log)
-
-    await db.commit()
-    for log in created_logs:
-        await db.refresh(log)
 
     # Record system activity
+    details = f"{payload.trigger_type} SMS sent to {len(created_logs)} recipient(s)"
+    if sms_error:
+        details += f" — delivery error: {sms_error}"
     syslog = SystemLog(
         user=current_user.username,
         action="SMS Broadcast",
-        details=f"{payload.trigger_type} SMS sent to {len(created_logs)} recipient(s)",
+        details=details,
     )
     db.add(syslog)
     await db.commit()
@@ -815,6 +854,9 @@ async def list_sms_logs(
     current_user: User = Depends(get_current_user),
 ) -> list[SmsLogOut]:
     stmt = select(SmsLog).order_by(SmsLog.timestamp.desc())
+    # Admins audit every message; everyone else only sees what they sent.
+    if current_user.role != "admin":
+        stmt = stmt.where(SmsLog.sent_by == current_user.username)
     if status_filter:
         stmt = stmt.where(SmsLog.status == status_filter)
     if trigger:
@@ -837,21 +879,34 @@ async def send_sos(
         f"Alert generated by {current_user.username}."
     )
 
-    # Broadcast to all active users (simulated)
-    result = await db.execute(select(User).where(User.is_active == True, User.sms_alerts_enabled == True))
+    # An SOS reaches every active account — no SMS opt-in or role filtering.
+    result = await db.execute(select(User).where(User.is_active == True))
     recipients = result.scalars().all()
 
+    event_id = secrets.token_hex(8)
+
     for recipient in recipients:
-        log = SmsLog(
-            recipient_phone=recipient.phone,
-            recipient_name=recipient.username,
-            recipient_role=recipient.role,
+        # In-app notification for every user, online or not.
+        db.add(Notification(
+            user_id=recipient.id,
+            client_id=f"sos-{event_id}",
+            title="Emergency SOS",
             message=message,
-            status="simulated",
-            trigger_type="emergency_sos",
-            sector=payload.location or recipient.location_name,
-        )
-        db.add(log)
+            type="emergency_sos",
+            location=payload.location or recipient.location_name,
+            alert_level="CRITICAL",
+        ))
+
+    # An SOS goes out over TextBee to every account that has a number on file.
+    _sent, _sms_error, _logs = await deliver_sms(
+        db,
+        recipients,
+        message,
+        trigger_type="emergency_sos",
+        sector=payload.location,
+        sent_by=current_user.username,
+        log_skipped=True,
+    )
 
     # Record system activity
     syslog = SystemLog(
@@ -866,6 +921,7 @@ async def send_sos(
     await manager.broadcast({
         "event": "emergency_sos",
         "data": {
+            "event_id": event_id,
             "user": current_user.username,
             "location": payload.location,
             "message": message,

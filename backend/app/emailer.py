@@ -1,32 +1,13 @@
-"""backend/app/emailer.py
-
-Outbound email — password reset links go out through Brevo's HTTP API.
-
-Configure with environment variables in `backend/.env`:
-
-    BREVO_API_KEY   API key from https://app.brevo.com/settings/keys/api
-    EMAIL_FROM      a sender verified in Brevo, e.g.
-                    "WildGuard AI <alerts@yourdomain.org>"
-                    Free mailboxes (gmail.com, yahoo.com) can be verified as a
-                    sender too, but they can't be authenticated, so they are
-                    more likely to land in spam. A real domain is better.
-
-When no key or sender is configured nothing leaves the machine: the reset
-link is logged and returned to the caller so the flow stays testable locally.
-"""
-
 import logging
 import os
 from email.utils import parseaddr
 from html import escape
-
 import httpx
 
 logger = logging.getLogger(__name__)
 
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 DEFAULT_SENDER_NAME = "WildGuard AI"
-
 
 def _sender() -> dict | None:
     """Parse EMAIL_FROM into the {"name", "email"} object Brevo expects."""
@@ -39,10 +20,8 @@ def _sender() -> dict | None:
         return None
     return {"name": name.strip() or DEFAULT_SENDER_NAME, "email": address}
 
-
 def is_email_configured() -> bool:
     return bool(os.getenv("BREVO_API_KEY", "").strip() and _sender())
-
 
 def _reset_email_body(username: str, reset_url: str, expires_minutes: int) -> tuple[str, str]:
     safe_name = escape(username or "there")

@@ -1,14 +1,7 @@
-"""Species head for elephant / tiger / leopard.
-
-Runs after YOLO boxes. Loads models/wildguard_etl.onnx from MODEL_DIR.
-"""
-
 from __future__ import annotations
-
 import json
 import threading
 from pathlib import Path
-
 import cv2
 import numpy as np
 
@@ -21,7 +14,6 @@ CLASSES = ("elephant", "tiger", "leopard")
 _lock = threading.Lock()
 _session = None
 _classes = list(CLASSES)
-
 
 def _load():
     global _session, _classes
@@ -41,7 +33,6 @@ def _load():
             str(ONNX_PATH), providers=["CPUExecutionProvider"]
         )
         return _session
-
 
 def classify_crop_bgr(crop_bgr: np.ndarray) -> dict:
     """Classify a BGR crop. Returns species, confidence, probs."""
@@ -64,7 +55,6 @@ def classify_crop_bgr(crop_bgr: np.ndarray) -> dict:
         "confidence": round(float(probs[idx]), 4),
         "probs": {c: round(float(probs[i]), 4) for i, c in enumerate(_classes)},
     }
-
 
 def available() -> bool:
     return ONNX_PATH.is_file()

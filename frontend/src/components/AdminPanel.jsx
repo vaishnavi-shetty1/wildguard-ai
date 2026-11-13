@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {Activity,AlertTriangle,CheckCircle2,Edit3,Lock,MessageSquare,Plus,Search,Shield,Trash2,UserCheck,UserCog,UserX,Users,X,} from "lucide-react";
-import { fetchUsers, updateUser, createUser, deleteUser as apiDeleteUser, mapBackendUser, fetchSystemLogs, mapSystemLog } from "../api";
+import { fetchUsers, updateUser, createUser, deleteUser as apiDeleteUser, mapBackendUser, fetchSystemLogs, mapSystemLog, fetchSmsStatus } from "../api";
 
 const initialLogs = [
   {
@@ -58,6 +58,23 @@ const AdminPanel = ({ currentUser, onNotification }) => {
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
+  // Real TextBee gateway state — the alert toggles below are still local UI.
+  const [smsStatus, setSmsStatus] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSmsStatus()
+      .then((status) => {
+        if (!cancelled) setSmsStatus(status);
+      })
+      .catch((error) => {
+        console.warn("Could not read the TextBee gateway status:", error);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const smsConnected = Boolean(smsStatus?.configured) && !smsStatus?.error;
+
   useEffect(() => {
     let cancelled = false;
     fetchUsers()
@@ -103,7 +120,6 @@ const AdminPanel = ({ currentUser, onNotification }) => {
     criticalAlert: true,
     mediumAlert: true,
     lowAlert: false,
-    twilioConfigured: false,
     senderName: "WILDGUARD",
   });
 
@@ -551,16 +567,18 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                         SMS Gateway
                       </p>
                       <p className="mt-1 text-xs text-slate-600">
-                        Twilio integration status
+                        TextBee gateway status
                       </p>
                     </div>
-                    <span className={`rounded-lg px-2.5 py-1 text-[13px] font-semibold ${ smsConfig.twilioConfigured ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border border-yellow-500/20 bg-yellow-500/10 text-yellow-400" }`}>
-                      {smsConfig.twilioConfigured ? "CONNECTED" : "SIMULATED"}
+                    <span className={`rounded-lg px-2.5 py-1 text-[13px] font-semibold ${ smsConnected ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border border-yellow-500/20 bg-yellow-500/10 text-yellow-400" }`}>
+                      {smsConnected ? "CONNECTED" : "NOT CONNECTED"}
                     </span>
                   </div>
-                  <button type="button" onClick={() => setSmsConfig((current) => ({ ...current, twilioConfigured: !current.twilioConfigured, }))} className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
-                    {smsConfig.twilioConfigured ? "Switch to Simulation" : "Configure Gateway"}
-                  </button>
+                  <p className="mt-4 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-500">
+                    {smsStatus?.error || (smsConnected
+                      ? "TextBee is sending through your registered phone."
+                      : "Set TEXTBEE_API_KEY in backend/.env to enable delivery.")}
+                  </p>
                 </div>
               </div>
             </div>

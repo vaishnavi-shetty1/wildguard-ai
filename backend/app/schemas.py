@@ -187,6 +187,7 @@ class SmsLogOut(BaseModel):
     trigger_type: str
     sighting_id: Optional[str]
     sector: Optional[str]
+    sent_by: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -196,7 +197,9 @@ class SmsConfigOut(BaseModel):
     alert_levels: list[str]
     selected_species: list[str]
     default_sender_name: str
-    twilio_configured: bool
+    # Live provider state, read from the environment (not editable via the API)
+    sms_configured: bool = False
+    sms_provider: str = "textbee"
 
 
 class SmsConfigUpdate(BaseModel):
@@ -204,7 +207,6 @@ class SmsConfigUpdate(BaseModel):
     alert_levels: Optional[list[str]] = None
     selected_species: Optional[list[str]] = None
     default_sender_name: Optional[str] = None
-    twilio_configured: Optional[bool] = None
 
 
 # ── Alerts / SOS schemas ───────────────────────────────────────────────────────

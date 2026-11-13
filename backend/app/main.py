@@ -1,10 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
-
 from .database import init_db, SessionLocal, User
 from .routes import (
     router,
@@ -58,7 +56,6 @@ DEMO_USERS = [
     },
 ]
 
-
 async def seed_demo_users():
     async with SessionLocal() as db:
         for demo in DEMO_USERS:
@@ -76,7 +73,6 @@ async def seed_demo_users():
             db.add(user)
         await db.commit()
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -84,7 +80,6 @@ async def lifespan(app: FastAPI):
     await seed_demo_users()
     logging.getLogger(__name__).info("Demo users seeded.")
     yield
-
 
 app = FastAPI(
     title="WildGuard AI — Backend API",
@@ -114,11 +109,9 @@ app.include_router(logs_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 
-
 @app.get("/", tags=["Health"])
 async def root():
     return {"status": "ok", "service": "WildGuard AI Backend"}
-
 
 @app.get("/health", tags=["Health"])
 async def health():

@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  fetchUsers,
+  fetchAllUsers,
   mapBackendUser,
   getSmsConfig,
   updateSmsConfig,
@@ -8,6 +8,7 @@ import {
   fetchSmsLogs,
   mapSmsLog,
   sendSos,
+  fetchSmsStatus,
 } from "../api";
 import { formatDate } from "../utils/datetime";
 import {
@@ -31,63 +32,6 @@ import {
   X,
   Zap,
 } from "lucide-react";
-
-/* =========================================================
-   SAMPLE USERS
-   Replace with your localStorage / backend users later.
-   ========================================================= */
-
-const INITIAL_RECIPIENTS = [
-  {
-    id: "USR-001",
-    name: "Forest Control Room",
-    phone: "+91 9876543210",
-    role: "operator",
-    location: "National Reserve Control",
-    enabled: true,
-  },
-  {
-    id: "USR-002",
-    name: "Ravi Kumar",
-    phone: "+91 9876543211",
-    role: "landowner",
-    location: "Sector B3 - Green Valley Orchards",
-    enabled: true,
-  },
-  {
-    id: "USR-003",
-    name: "Meena Devi",
-    phone: "+91 9876543212",
-    role: "landowner",
-    location: "Sector A4 - Silverwood Hamlet",
-    enabled: true,
-  },
-  {
-    id: "USR-004",
-    name: "Village Head - Silverwood",
-    phone: "+91 9876543213",
-    role: "village_head",
-    location: "Sector A4 - Silverwood Hamlet",
-    enabled: true,
-  },
-  {
-    id: "USR-005",
-    name: "Wildlife Officer",
-    phone: "+91 9876543214",
-    role: "operator",
-    location: "National Reserve",
-    enabled: true,
-  },
-  {
-    id: "USR-006",
-    name: "Admin Control",
-    phone: "+91 9876543215",
-    role: "admin",
-    location: "Central Administration",
-    enabled: true,
-  },
-];
-
 
 /* =========================================================
    SAMPLE SMS LOGS
@@ -153,40 +97,63 @@ const INITIAL_LOGS = [
    ========================================================= */
 
 const SmsCenter = ({ currentUser, onNotification }) => {
-  const [recipients, setRecipients] = useState(
-    INITIAL_RECIPIENTS
-  );
+  // Admins audit every message; everyone else only sees their own sends.
+  const isAdmin = currentUser?.role === "admin";
+
+  // Recipients are always the real user directory — never demo data.
+  const [recipients, setRecipients] = useState([]);
 
   const [logs, setLogs] = useState(
     INITIAL_LOGS
   );
 
+  // Every role reads the same directory (GET /users/all), and the list
+  // refreshes so an account added anywhere shows up without a page reload.
   useEffect(() => {
     let cancelled = false;
-    fetchUsers()
-      .then((data) => {
-        if (cancelled) return;
-        const mapped = (data || []).map((u) => {
-          const user = mapBackendUser(u);
-          return {
-            id: user.id,
-            uid: user.id,
-            name: user.username,
-            phone: user.phone || "+91 0000000000",
-            role: user.role,
-            location: user.locationName || "Unknown Sector",
-            enabled: user.smsAlertsEnabled && user.isActive,
-          };
+    // Never list the signed-in account — nobody SMSes themselves.
+    const selfId = currentUser?.id ? String(currentUser.id) : null;
+
+    const loadRecipients = () => {
+      fetchAllUsers()
+        .then((data) => {
+          if (cancelled) return;
+          setRecipients(
+            (data || []).map((u) => {
+              const user = mapBackendUser(u);
+              return {
+                id: user.id,
+                uid: user.uid,
+                name: user.username,
+                phone: user.phone,
+                role: user.role,
+                location: user.locationName,
+                enabled: user.smsAlertsEnabled && user.isActive,
+              };
+            }).filter((recipient) => recipient.id !== selfId)
+          );
+        })
+        .catch((error) => {
+          console.warn("Could not load SMS recipients:", error);
         });
-        if (mapped.length > 0) {
-          setRecipients(mapped);
-        }
-      })
-      .catch((error) => {
-        console.warn("Could not load recipients from backend, using sample data:", error);
-      });
-    return () => { cancelled = true; };
-  }, []);
+    };
+
+    const refresh = () => {
+      if (!document.hidden) loadRecipients();
+    };
+
+    loadRecipients();
+    const interval = setInterval(refresh, 20000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [currentUser?.id]);
 
   //load SMS config from backend
   useEffect(() => {
@@ -200,7 +167,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
           alertLevels: config.alert_levels || current.alertLevels,
           selectedSpecies: (config.selected_species || []).map((s) => capitalize(s)),
           defaultSenderName: config.default_sender_name,
-          twilioConfigured: config.twilio_configured,
+          smsConfigured: config.sms_configured,
         }));
       })
       .catch((error) => {
@@ -209,12 +176,12 @@ const SmsCenter = ({ currentUser, onNotification }) => {
     return () => { cancelled = true; };
   }, []);
 
-  //load SMS logs from backend
-  useEffect(() => {
-    let cancelled = false;
-    fetchSmsLogs({ limit: 100 })
+  // Every SMS path lands in one history: manual broadcasts, automatic detection
+  // alerts and emergency SOS all write `sms_logs` rows, so re-read the table
+  // instead of only appending what this panel sent itself.
+  const loadSmsLogs = useCallback(() => {
+    return fetchSmsLogs({ limit: 100 })
       .then((records) => {
-        if (cancelled) return;
         const mapped = (records || []).map(mapSmsLog);
         if (mapped.length > 0) {
           setLogs(mapped);
@@ -223,8 +190,25 @@ const SmsCenter = ({ currentUser, onNotification }) => {
       .catch((error) => {
         console.warn("Could not load SMS logs from backend, using sample:", error);
       });
-    return () => { cancelled = true; };
   }, []);
+
+  //load SMS logs from backend
+  useEffect(() => {
+    loadSmsLogs();
+
+    // An SOS fired from another view (stakeholder portal, live monitor) should
+    // show up here too, so refresh while the panel is open and on refocus.
+    const refresh = () => {
+      if (!document.hidden) loadSmsLogs();
+    };
+    const interval = setInterval(refresh, 20000);
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [loadSmsLogs]);
 
   const saveSmsConfig = async () => {
     try {
@@ -233,7 +217,6 @@ const SmsCenter = ({ currentUser, onNotification }) => {
         alert_levels: smsConfig.alertLevels,
         selected_species: smsConfig.selectedSpecies.map((s) => s.toLowerCase()),
         default_sender_name: smsConfig.defaultSenderName,
-        twilio_configured: smsConfig.twilioConfigured,
       });
       if (onNotification) onNotification({ title: "SMS Settings Saved", message: "SMS configuration updated on the backend.", type: "sms" }, false);
     } catch (error) {
@@ -281,8 +264,52 @@ const SmsCenter = ({ currentUser, onNotification }) => {
         "Human intruder",
       ],
       defaultSenderName: "WILDGUARD AI",
-      twilioConfigured: false,
+      smsConfigured: false,
     });
+
+  const [smsStatus, setSmsStatus] =
+    useState(null);
+
+  // Which TextBee phone (if any) will actually carry the messages
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchSmsStatus()
+      .then((status) => {
+        if (!cancelled) setSmsStatus(status);
+      })
+      .catch((error) => {
+        console.warn("Could not read the TextBee gateway status:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const gatewaySummary = useMemo(() => {
+    if (!smsConfig.smsConfigured) {
+      return "TextBee is not connected. Set TEXTBEE_API_KEY in backend/.env and messages are only recorded here.";
+    }
+
+    if (smsStatus?.error) {
+      return `TextBee refused the request: ${smsStatus.error}`;
+    }
+
+    const devices = smsStatus?.devices || [];
+
+    if (devices.length === 0) {
+      return "The API key works, but no phone is registered on the TextBee account yet.";
+    }
+
+    const device =
+      devices.find((item) => item.online) || devices[0];
+
+    return `TextBee is connected — texts go out through ${device.name || device.id || "your phone"}.`;
+  }, [
+    smsConfig.smsConfigured,
+    smsStatus,
+  ]);
 
 
   /* =======================================================
@@ -321,6 +348,14 @@ const SmsCenter = ({ currentUser, onNotification }) => {
      AVAILABLE RECIPIENTS
      ======================================================= */
 
+  // A recipient can only be selected when there is a number to send to.
+  const hasPhone = (recipient) =>
+    Boolean(
+      recipient &&
+        recipient.phone &&
+        String(recipient.phone).trim()
+    );
+
   const availableRecipients =
     useMemo(() => {
       let result = recipients.filter(
@@ -349,10 +384,10 @@ const SmsCenter = ({ currentUser, onNotification }) => {
             recipient.name
               .toLowerCase()
               .includes(query) ||
-            recipient.phone
+            (recipient.phone || "")
               .toLowerCase()
               .includes(query) ||
-            recipient.location
+            (recipient.location || "")
               .toLowerCase()
               .includes(query)
         );
@@ -449,6 +484,12 @@ const SmsCenter = ({ currentUser, onNotification }) => {
   const toggleRecipient = (
     id
   ) => {
+    const recipient = recipients.find(
+      (item) => item.id === id
+    );
+
+    if (!hasPhone(recipient)) return;
+
     setSelectedRecipients(
       (current) =>
         current.includes(id)
@@ -471,10 +512,14 @@ const SmsCenter = ({ currentUser, onNotification }) => {
   const selectAllRecipients =
     () => {
       const ids =
-        availableRecipients.map(
-          (recipient) =>
-            recipient.id
-        );
+        availableRecipients
+          .filter((recipient) =>
+            hasPhone(recipient)
+          )
+          .map(
+            (recipient) =>
+              recipient.id
+          );
 
       const allSelected =
         ids.every((id) =>
@@ -507,7 +552,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
      SEND SMS
      ======================================================= */
 
-  const sendSms = async () => {
+  const handleSendSms = async () => {
     if (
       selectedRecipients.length ===
       0
@@ -525,12 +570,24 @@ const SmsCenter = ({ currentUser, onNotification }) => {
       return;
     }
 
+    const mappedRecipients = recipients
+      .filter(
+        (recipient) =>
+          selectedRecipients.includes(recipient.id) &&
+          hasPhone(recipient)
+      )
+      .map((r) => Number(r.id));
+
+    if (mappedRecipients.length === 0) {
+      alert(
+        "Selected recipients have no phone number on file."
+      );
+      return;
+    }
+
     setSending(true);
 
     try {
-      const mappedRecipients = recipients
-        .filter((recipient) => selectedRecipients.includes(recipient.id))
-        .map((r) => Number(r.id));
       const created = await sendSms({
         recipient_ids: mappedRecipients,
         message: message.trim(),
@@ -572,6 +629,8 @@ const SmsCenter = ({ currentUser, onNotification }) => {
     })
       .then(() => {
         if (onNotification) onNotification({ title: "Emergency SOS Sent", message: "Emergency broadcast dispatched to all stakeholders.", type: "threat" }, false);
+        // The backend logged one row per recipient — pull them into the history.
+        loadSmsLogs();
       })
       .catch((error) => {
         console.error("Failed to send SOS:", error);
@@ -963,7 +1022,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                     sending
                   }
                   onClick={
-                    sendSms
+                    handleSendSms
                   }
                   className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-[13px] font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -1119,6 +1178,12 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
               <div className="mt-3 max-h-82.5 space-y-1.5 overflow-y-auto pr-1">
 
+                {availableRecipients.length === 0 && (
+                  <p className="px-2 py-6 text-center text-[12px] text-slate-600">
+                    No users available yet. Add a user in the control panel.
+                  </p>
+                )}
+
                 {availableRecipients.map(
                   (recipient) => {
 
@@ -1127,21 +1192,34 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                         recipient.id
                       );
 
+                    const selectable =
+                      hasPhone(recipient);
+
                     return (
                       <button
                         type="button"
                         key={
                           recipient.id
                         }
+                        disabled={
+                          !selectable
+                        }
+                        title={
+                          selectable
+                            ? undefined
+                            : "This user has no phone number on file."
+                        }
                         onClick={() =>
                           toggleRecipient(
                             recipient.id
                           )
                         }
-                        className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-left transition ${
-                          selected
-                            ? "border-emerald-500/20 bg-emerald-500/5"
-                            : "border-transparent hover:border-slate-800 hover:bg-slate-900"
+                        className={`flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition ${
+                          !selectable
+                            ? "cursor-not-allowed border-transparent opacity-50"
+                            : selected
+                            ? "cursor-pointer border-emerald-500/20 bg-emerald-500/5"
+                            : "cursor-pointer border-transparent hover:border-slate-800 hover:bg-slate-900"
                         }`}
                       >
 
@@ -1175,7 +1253,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                           <p className="mt-0.5 truncate text-[11px] text-slate-600">
                             {
-                              recipient.phone
+                              recipient.phone || "No phone number"
                             }
                             {" · "}
                             {
@@ -1264,6 +1342,10 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                   Failed
                 </option>
 
+                <option value="no_phone">
+                  No phone number
+                </option>
+
               </select>
 
             </div>
@@ -1333,7 +1415,8 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                             <p className="text-[11px] text-slate-600">
                               {
-                                log.recipientPhone
+                                log.recipientPhone ||
+                                "No phone number"
                               }
                             </p>
 
@@ -1351,6 +1434,12 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                             log.message
                           }
                         </p>
+
+                        {isAdmin && log.sentBy ? (
+                          <p className="mt-1 text-[10px] uppercase tracking-wide text-slate-600">
+                            by {log.sentBy}
+                          </p>
+                        ) : null}
 
                       </td>
 
@@ -1647,7 +1736,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                   <div
                     className={`grid size-9 place-items-center rounded-lg ${
-                      smsConfig.twilioConfigured
+                      smsConfig.smsConfigured
                         ? "bg-emerald-500/10 text-emerald-400"
                         : "bg-amber-500/10 text-amber-400"
                     }`}
@@ -1664,9 +1753,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                     </p>
 
                     <p className="mt-1 text-[12px] text-slate-500">
-                      {smsConfig.twilioConfigured
-                        ? "Twilio is set up, so texts go out for real."
-                        : "Twilio is not set up. Messages are recorded here but no phone receives them."}
+                      {gatewaySummary}
                     </p>
 
                   </div>
@@ -1676,7 +1763,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <span
                   className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
-                    smsConfig.twilioConfigured
+                    smsConfig.smsConfigured
                       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                       : "border-amber-500/20 bg-amber-500/10 text-amber-400"
                   }`}
@@ -1684,7 +1771,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                   <span className="size-1.5 rounded-full bg-current" />
 
-                  {smsConfig.twilioConfigured
+                  {smsConfig.smsConfigured
                     ? "Connected"
                     : "Simulated"}
 
@@ -1835,6 +1922,13 @@ const SmsStatus = ({
       className:
         "border-red-500/20 bg-red-500/10 text-red-400",
       icon: X,
+    },
+
+    no_phone: {
+      label: "No phone",
+      className:
+        "border-slate-500/20 bg-slate-500/10 text-slate-400",
+      icon: AlertTriangle,
     },
   };
 

@@ -1,54 +1,823 @@
-# Real-Time Wild Animal Detection and Monitoring
+# WildGuard AI — Real-Time Wildlife Detection & Alert System
 
-An Edge AI project for detecting **elephants, tigers, and leopards** with a three-class YOLO model and deploying it to an **NVIDIA Jetson Nano**. The repository also contains a React/FastAPI dashboard for event monitoring, alerts, users, and administration.
+WildGuard AI is an end-to-end system for detecting dangerous wildlife (**elephant, tiger, leopard**) near villages, farmland and forest boundaries, and for getting that information to the people who need it — instantly, on a dashboard, in-app, and by SMS.
 
-## Objective
+It has two halves:
 
-The final field system must detect the three species in images, videos, and a USB camera stream; draw species-coloured bounding boxes; display confidence, FPS, latency, and species/total counts; and log confirmed events. The final inference target is TensorRT on a Jetson Nano.
+- a **React 19 + Vite dashboard** (live camera view, AI overlay, detections, SMS center, user administration, role-based portals), and
+- a **FastAPI + async SQLAlchemy backend** (event ingestion, JWT auth, YOLO inference, SQLite/PostgreSQL persistence, WebSocket push, notifications, SOS).
+
+The long-term deployment target is an **NVIDIA Jetson Nano** running a TensorRT-accelerated three-class YOLO11n model at the edge, with USB camera input. That edge track is described in [Edge deployment roadmap](#edge-deployment-roadmap-jetson-nano).
+
+---
+
+## Table of contents
+
+1. [What the system does](#what-the-system-does)
+2. [Feature overview](#feature-overview)
+3. [System architecture](#system-architecture)
+4. [Technology stack](#technology-stack)
+5. [Repository layout](#repository-layout)
+6. [Prerequisites](#prerequisites)
+7. [Quick start](#quick-start)
+8. [Demo accounts](#demo-accounts)
+9. [Configuration reference](#configuration-reference)
+10. [Roles and permissions](#roles-and-permissions)
+11. [Frontend deep dive](#frontend-deep-dive)
+12. [Backend deep dive](#backend-deep-dive)
+13. [Data model](#data-model)
+14. [API reference](#api-reference)
+15. [Real-time protocol (WebSocket)](#real-time-protocol-websocket)
+16. [Detection and alerting pipeline](#detection-and-alerting-pipeline)
+17. [AI inference](#ai-inference)
+18. [Password reset email (Brevo)](#password-reset-email-brevo)
+19. [Device / Raspberry Pi integration](#device--raspberry-pi-integration)
+20. [Edge deployment roadmap (Jetson Nano)](#edge-deployment-roadmap-jetson-nano)
+21. [Scripts and commands](#scripts-and-commands)
+22. [Troubleshooting](#troubleshooting)
+23. [Security notes](#security-notes)
+24. [Known limitations and housekeeping](#known-limitations-and-housekeeping)
+
+---
+
+## What the system does
+
+A camera watches a boundary. A detector recognises an animal. The event becomes:
+
+1. **A stored detection** — species, confidence, GPS, device ID, timestamp, optional thumbnail.
+2. **A dashboard alert** — pushed over WebSocket to every open dashboard, with a species-coloured overlay on the live video and an audible alert.
+3. **A saved notification** — one row per active user, so nobody misses an alert because they were logged out.
+4. **An SMS record** — logged in the SMS history with the rendered alert text (delivery is currently simulated; see [Detection and alerting pipeline](#detection-and-alerting-pipeline)).
+5. **A system log entry** — for audit and administration.
+
+On top of that, any signed-in user can press **SOS** to broadcast a critical emergency alert to *every* active account, regardless of SMS preferences.
+
+---
+
+## Feature overview
+
+### Authentication
+- Email + password registration and login, bcrypt password hashing, JWT access tokens (HS256, 24 h default).
+- Protected routes in the frontend, token attached to every API call.
+- Forgot-password / reset-password flow with single-use, hashed, expiring reset tokens.
+- Email delivery through Brevo; falls back to showing the reset link in the UI when email is not configured (development only).
+
+### Roles
+Four roles — `admin`, `operator`, `landowner`, `village_head` — each with its own navigation and data scope.
+
+### Live Monitor
+- Browser webcam capture with an AI scanning toggle.
+- Two inference providers: **local** (frame → backend YOLO endpoint) and **Roboflow** (hosted WebRTC workflow, optional).
+- Species-coloured bounding boxes with class name and confidence labels.
+- Real YOLO output only — no randomised demo predictions.
+
+### Detection history
+- Filterable detection log with species, confidence, threat level, location, camera and SMS status.
+- `/stats` aggregation for the overview cards (total detections, per-species counts, last event, live client count).
+- Overview screen with recent alerts and stakeholder-specific framing.
+
+### SMS center
+- Recipient list built from **real registered users** only (`GET /users/all`), refreshed on mount, on a 20 s poll, and when the tab regains focus.
+- Users without a phone number are shown as "No phone number" and cannot be selected.
+- Message composer with trigger type, sector, and per-recipient logs.
+- Full SMS history with status and trigger filters.
+- SMS configuration endpoint (auto-alert toggle, alert levels, selected species, sender name).
+
+### Emergency SOS
+- One button, one POST, everyone notified: every active user gets an in-app notification, and every user with a phone number gets an SMS log entry.
+- Broadcast over WebSocket so all dashboards react immediately.
+- Client-side dedupe via `client_id` so a re-delivered event never becomes a duplicate notification.
+
+### Administration (Control Panel)
+- User CRUD with role assignment, phone, sector/location, SMS opt-in and active flag.
+- Operators may only manage users they created and cannot grant `admin`.
+- Read-only system activity log with suspicious-event flagging (failed logins, password resets, SOS, SMS broadcasts).
+
+### Stakeholder portal
+- Landowner / village-head view of recent detections, local alerts, and a dedicated SOS button.
+
+---
+
+## System architecture
 
 ```text
-Training machine: dataset verification → YOLO11n training → evaluation → best checkpoint → ONNX
-                                                                                     │
-                                                                                     ▼
-Jetson Nano: USB camera → frames → preprocessing → TensorRT → NMS → boxes/counts/FPS
-                                                                 │
-                                                    tracking / alert / logging (later)
-                                                                 │
-                                                                 ▼
-                                              FastAPI API → WebSocket dashboard / SMS
+                    ┌──────────────────────────────┐
+   USB / IP camera  │  Browser (React 19 + Vite)   │
+        │           │                              │
+        ▼           │  pages/  components/  hooks/ │
+  ┌───────────┐     │  LiveMonitor · SmsCenter ·   │
+  │ Detector  │     │  Overview · AdminPanel ·     │
+  │ (YOLO /   │     │  StakeholderPortal           │
+  │  Roboflow)│     └───────────┬──────────────────┘
+  └─────┬─────┘                 │  fetch /api/v1/*  +  ws /api/v1/ws/live
+        │ frame (base64 JPEG)   │  (Vite dev proxy → :8000)
+        ▼                       ▼
+  ┌────────────────────────────────────────────────┐
+  │            FastAPI backend (routes.py)         │
+  │  auth · users · sms · alerts · logs · ai ·     │
+  │  notifications · detections · WebSocket        │
+  ├────────────────────────────────────────────────┤
+  │ ai/detector.py     ultralytics YOLO (lazy)     │
+  │ notifications.py   alert rendering (SMS stub)  │
+  │ emailer.py         Brevo transactional email   │
+  │ auth.py            bcrypt + JWT + role guard   │
+  │ websocket_manager  broadcast hub               │
+  ├────────────────────────────────────────────────┤
+  │   async SQLAlchemy 2  →  SQLite (aiosqlite)    │
+  └────────────────────────────────────────────────┘
+                 │                    │
+                 ▼                    ▼
+        detections · users     WebSocket clients
+        sms_logs · sms_config  (dashboards)
+        notifications · logs
+        password_reset_tokens
 ```
 
-> Do not train on the Jetson Nano. Keep the dataset (40,000+ annotated images), training, and experiment tracking on the training machine. The Jetson needs only the final model, runtime code, and compatible dependencies.
+External/edge clients (Jetson, Raspberry Pi, scripts) talk to the same backend using `X-Api-Key` instead of a dashboard JWT.
 
-## Current repository vs. required work
+---
 
-| Area | Status |
+## Technology stack
+
+### Backend
+| Layer | Choice |
 |---|---|
-| React dashboard | Implemented: authentication, roles, browser-camera UI, notifications, detection history, SMS/admin screens. |
-| FastAPI backend | Implemented: event ingestion, SQLite, JWT users, WebSockets, local alert logs, YOLO inference endpoint (`POST /api/v1/ai/predict`). Outbound SMS is currently disabled. |
-| Browser classifier | Real YOLO inference: browser captures a frame and calls the backend, which runs the bundled `yolo11n.pt` checkpoint (see `backend/app/ai/detector.py`). |
-| YOLO11n training, dataset validation, ONNX export | Required; not in this repository yet. |
-| TensorRT engine and Jetson camera/tracker/GPIO code | Required; not in this repository yet. |
-| Accuracy and Jetson benchmarks | Must be measured; no values may be invented. |
+| Framework | FastAPI 0.111 |
+| Server | Uvicorn (standard extras) |
+| ORM | SQLAlchemy 2 (async) + `aiosqlite` |
+| Validation | Pydantic v2 |
+| Auth | `bcrypt` 4.2, `python-jose[cryptography]` |
+| HTTP client | `httpx` (Brevo, Pi example) |
+| Inference | `ultralytics` (YOLO11), `opencv-python-headless`, `numpy`, `onnxruntime` |
+| Config | `python-dotenv` |
 
-## Fixed deployment configuration
+### Frontend
+| Layer | Choice |
+|---|---|
+| UI | React 19, React DOM 19 |
+| Build | Vite 8 (`@vitejs/plugin-react`) |
+| Routing | `react-router-dom` 7 |
+| Styling | Tailwind CSS 4 via `@tailwindcss/vite` |
+| Icons | `lucide-react` |
+| Animation | `motion` |
+| Toasts | `react-hot-toast` |
+| Optional AI | `@roboflow/inference-sdk` (hosted WebRTC workflows) |
+| Lint | `oxlint` |
+
+---
+
+## Repository layout
+
+```text
+wild/
+├── README.md                     ← this document
+├── AGENTS.md                     ← agent/workspace conventions
+├── commands.txt                  ← quick shell cheat-sheet
+├── package.json                  ← root shim: only @roboflow/inference-sdk
+│
+├── backend/
+│   ├── .gitignore
+│   ├── wildguard.db              ← SQLite database (created/used by default)
+│   └── app/
+│       ├── main.py               ← FastAPI app, CORS, routers, lifespan, demo seeding
+│       ├── routes.py             ← every HTTP + WebSocket endpoint (single module)
+│       ├── schemas.py            ← Pydantic request/response models
+│       ├── database.py           ← engine, session factory, ORM models, init_db()
+│       ├── auth.py               ← hashing, JWT, get_current_user, require_role
+│       ├── notifications.py      ← alert text rendering + shared SMS delivery
+│       ├── sms_sender.py         ← TextBee SMS transport (send, devices, status)
+│       ├── emailer.py            ← Brevo password-reset email
+│       ├── websocket_manager.py  ← ConnectionManager broadcast hub
+│       ├── pi_client_example.py  ← device-side POST example (not imported)
+│       ├── requirements.txt      ← Python dependencies
+│       ├── README.md             ← backend-specific API notes (partly outdated)
+│       └── ai/
+│           ├── detector.py           ← YOLO loading, base64 decode, inference
+│           ├── species_classifier.py ← optional three-class crop classifier
+│           └── models/
+│               ├── yolo11n.pt            ← bundled checkpoint (COCO, 80 classes)
+│               ├── best.pt/              ← exported checkpoint directory
+│               ├── wildguard_etl_cls.pt  ← three-class classifier weights
+│               ├── wildguard_etl_cls.json← classifier labels/metadata
+│               └── wildguard_etl.onnx    ← ONNX export
+│
+└── frontend/
+    ├── index.html                ← Vite entry, mounts /src/main.jsx
+    ├── vite.config.js            ← React + Tailwind plugins, /api proxy → :8000
+    ├── package.json              ← npm scripts and dependencies
+    ├── requirements.txt          ← human-readable dependency summary (docs only)
+    ├── .oxlintrc.json            ← lint configuration
+    ├── .env.example              ← Roboflow configuration template
+    └── src/
+        ├── main.jsx              ← createRoot + BrowserRouter
+        ├── App.jsx               ← route table
+        ├── api.js                ← fetch wrapper, mappers, WS URL, AI calls
+        ├── index.css             ← Tailwind import + global styles
+        ├── pages/
+        │   ├── Login.jsx
+        │   ├── Register.jsx
+        │   ├── ForgotPassword.jsx
+        │   ├── ResetPassword.jsx
+        │   └── HomePage.jsx      ← authenticated shell: header, tabs, WS, notifications
+        ├── components/
+        │   ├── AuthLayout.jsx
+        │   ├── ProtectedRoute.jsx
+        │   ├── Header.jsx
+        │   ├── Overview.jsx
+        │   ├── LiveMonitor.jsx
+        │   ├── DetectionLogs.jsx
+        │   ├── DetectionsPage.jsx
+        │   ├── SmsCenter.jsx
+        │   ├── AdminPanel.jsx
+        │   ├── StakeholderPortal.jsx
+        │   ├── NotificationDrawer.jsx
+        │   ├── NotificationToast.jsx
+        │   ├── NotificationPanel.jsx   (unused)
+        │   └── CameraFeed.jsx          (unused)
+        ├── hooks/
+        │   ├── useWebSocket.js
+        │   └── useRoboflowStream.js
+        ├── utils/
+        │   ├── detectionModel.js
+        │   ├── teachableMachine.js
+        │   ├── roboflowStream.js
+        │   ├── wildlifeDetection.js
+        │   ├── wildlifePrediction.js
+        │   ├── handleWildlifePrediction.js
+        │   ├── audio.js
+        │   ├── datetime.js
+        │   └── types.js                (unused)
+        └── pages/ + types.js
+```
+
+---
+
+## Prerequisites
+
+| Tool | Version | Notes |
+|---|---|---|
+| Python | 3.11+ (3.14 used in development) | `pip` available |
+| Node.js | 20+ | comes with npm |
+| Browser | Chrome / Edge / Firefox | webcam access required for Live Monitor |
+| SQLite | bundled with Python | no server to install |
+
+The AI dependencies (`ultralytics`, `opencv-python-headless`, `onnxruntime`, `numpy`) are heavy (~1 GB download). If you only need the dashboard, users, SMS and notifications, you can skip them — the AI endpoints are the only ones that import them, and the import is deferred.
+
+---
+
+## Quick start
+
+### 1. Backend
+
+```bash
+cd backend
+python -m venv venv
+# Windows (bash)
+source venv/Scripts/activate
+# macOS / Linux
+# source venv/bin/activate
+
+pip install -r app/requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+On first start the app creates all tables (and patches older SQLite schemas), then seeds four demo accounts. API docs: <http://localhost:8000/docs>. Health: <http://localhost:8000/health>.
+
+### 2. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the printed URL (normally <http://localhost:5173>). Vite proxies `/api` (including WebSocket upgrades) to `http://localhost:8000`, so no CORS or base-URL setup is needed in development.
+
+### 3. Log in
+
+Use one of the demo accounts below, or register a new user on `/register`.
+
+---
+
+## Demo accounts
+
+Seeded by `seed_demo_users()` in `backend/app/main.py` on every startup (existing emails are skipped, so your edits are safe):
+
+| Role | Email | Password | Location |
+|---|---|---|---|
+| `admin` | `admin@wildguard.ai` | `admin123` | WildGuard Control Center |
+| `operator` | `operator@wildguard.ai` | `operator123` | Forest Operations Zone |
+| `landowner` | `landowner@wildguard.ai` | `landowner123` | Sector B3 – Green Valley Orchards |
+| `village_head` | `villagehead@wildguard.ai` | `villagehead123` | Sector A4 – Silverwood Hamlet |
+
+Demo users are seeded **without phone numbers**, so they appear in the SMS recipient list as "No phone number" until you add one in the Control Panel. See [Security notes](#security-notes) — change or remove these before any real deployment.
+
+---
+
+## Configuration reference
+
+### Backend environment (`backend/.env`)
+
+`database.py` calls `load_dotenv()` at import, so a `backend/.env` file is read automatically. All variables are optional with development defaults.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | `sqlite+aiosqlite:///./wildguard.db` | Any SQLAlchemy async URL; point at PostgreSQL to scale |
+| `API_SECRET_KEY` | `change_me` | Shared secret for device clients (`X-Api-Key`) |
+| `JWT_SECRET_KEY` | `wildguard-dev-secret-key-change-in-production` | Signs dashboard JWTs |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | JWT lifetime (24 h) |
+| `FRONTEND_URL` | `http://localhost:5173` | Base URL used to build password-reset links |
+| `RESET_TOKEN_EXPIRE_MINUTES` | `30` | Reset-link validity |
+| `APP_ENV` | `development` | In `production`, the reset link is never returned in the API response |
+| `BREVO_API_KEY` | — | Brevo transactional email key |
+| `EMAIL_FROM` | — | Verified sender, e.g. `"WildGuard AI <alerts@yourdomain.com>"` |
+| `WILDLIFE_MODEL_PATH` | bundled `yolo11n.pt` | Swap in a trained three-class checkpoint |
+| `BACKEND_URL` | — | Used by `pi_client_example.py` on the device |
+| `TEXTBEE_API_KEY` | — | TextBee API key; without it SMS is recorded as `simulated` and never sent |
+| `TEXTBEE_DEVICE_ID` | account default | Which registered Android phone sends the texts |
+| `TEXTBEE_DEFAULT_COUNTRY_CODE` | — | Prefix added to numbers saved without one (e.g. `91`) |
+| `TEXTBEE_BASE_URL` | `https://api.textbee.dev/api/v1` | Override for a self-hosted TextBee gateway |
+
+SMS goes out through [TextBee](https://textbee.dev): an Android phone with a SIM is registered as a device, and the backend POSTs to `/gateway/send-sms` with the `x-api-key` header. Legacy Twilio names (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `ALERT_RECIPIENTS`) are not read anywhere.
+
+Example `backend/.env`:
+
+```dotenv
+DATABASE_URL=sqlite+aiosqlite:///./wildguard.db
+API_SECRET_KEY=replace-with-a-long-device-secret
+JWT_SECRET_KEY=replace-with-a-long-random-jwt-secret
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+FRONTEND_URL=http://localhost:5173
+BREVO_API_KEY=
+EMAIL_FROM=
+TEXTBEE_API_KEY=
+TEXTBEE_DEVICE_ID=
+```
+
+### Frontend environment (`frontend/.env.local`)
+
+All `VITE_*` values are inlined into the client bundle at build time — treat them as public.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_ROBOFLOW_API_KEY` | — | Enables the Roboflow provider; leave empty to hide it |
+| `VITE_ROBOFLOW_WORKSPACE` | `vaishnavi-shetty` | Workspace slug |
+| `VITE_ROBOFLOW_WORKFLOW` | `ai-wgdeu` | Workflow ID |
+| `VITE_ROBOFLOW_IMAGE_INPUT` | `image` | Workflow image input name |
+| `VITE_ROBOFLOW_STREAM_OUTPUT` | `output` | Annotated stream output name (empty = server picks) |
+| `VITE_ROBOFLOW_DATA_OUTPUT` | `predictions` | Predictions output name |
+| `VITE_ROBOFLOW_PLAN` | `webrtc-gpu-medium` | Inference plan |
+| `VITE_ROBOFLOW_REGION` | `us` | Inference region |
+| `VITE_ROBOFLOW_TIMEOUT` | `3600` | Stream timeout (seconds) |
+| `VITE_ROBOFLOW_SERVER_URL` | — | Override for self-hosted / proxied Roboflow |
+
+Without the first three, the Live Monitor simply uses the local backend detector and the Roboflow option stays hidden.
+
+---
+
+## Roles and permissions
+
+| Capability | admin | operator | landowner | village_head |
+|---|:--:|:--:|:--:|:--:|
+| Overview tab | ✅ | ✅ | ✅ | ✅ |
+| Live Monitor | ✅ | ✅ | ✅ | ✅ |
+| SMS Center | ✅ | ✅ | ✅ | ✅ |
+| My land / My village portal | — | — | ✅ | ✅ |
+| Control Panel (users + system logs) | ✅ | ✅ | — | — |
+| List/create users (`/users`) | ✅ | ✅ | — | — |
+| Update users | ✅ (any) | ✅ (only users they created, never admins) | — | — |
+| Delete users (`/users/{id}`) | ✅ (admins cannot be deleted) | — | — | — |
+| System logs (`/logs`) | ✅ | ✅ | — | — |
+| Read user directory (`/users/all`) | ✅ | ✅ | ✅ | ✅ |
+| Trigger SOS | ✅ | ✅ | ✅ | ✅ |
+
+Navigation tabs per role are defined in `ROLE_TABS` (`frontend/src/pages/HomePage.jsx`) and mirrored by the nav arrays in `Header.jsx`. `handleTabChange` rejects tabs outside the role's allow-list, and `HomePage` additionally renders `AccessDenied` for the `admin` and `stakeholder` screens as defence in depth.
+
+The backend enforces the same rules independently — the UI gating is convenience, not security.
+
+---
+
+## Frontend deep dive
+
+### Entry and routing
+
+- `index.html` → `src/main.jsx` → `createRoot(...).render(<BrowserRouter><App /></BrowserRouter>)`.
+- `App.jsx` routes:
+
+| Path | Element | Access |
+|---|---|---|
+| `/login` | `Login` | public |
+| `/register` | `Register` | public |
+| `/forgot-password` | `ForgotPassword` | public |
+| `/reset-password` | `ResetPassword` | public (expects `?token=`) |
+| `/home` | `ProtectedRoute` → `HomePage` | authenticated |
+| `/detections` | `ProtectedRoute` → `DetectionsPage` | authenticated |
+| `/` and `*` | redirect to `/login` | — |
+
+- `ProtectedRoute` requires **both** `localStorage.wildguard_token` and a parseable `localStorage.wildguard_user` with `id` and `email`; otherwise it clears the session and redirects with a message.
+
+### `api.js` — the single network layer
+
+`request(path, options)` prefixes `/api/v1`, injects `Authorization: Bearer <token>` from `localStorage.wildguard_token`, parses `detail` out of error responses into an `Error`, and returns `null` for `204`.
+
+Groups:
+
+- **Auth** — `loginUser`, `registerUser`, `getCurrentUser`, `requestPasswordReset`, `resetPassword`
+- **Users** — `fetchUsers` (`/users`, admin only), `fetchAllUsers` (`/users/all`, any signed-in role), `createUser`, `updateUser`, `deleteUser`
+- **SMS** — `getSmsConfig`, `updateSmsConfig`, `sendSms`, `fetchSmsLogs`
+- **Alerts** — `sendSos`
+- **Logs / notifications** — `fetchSystemLogs`, `fetchNotifications`, `createNotification`, `markNotificationReadRequest`, `markAllNotificationsReadRequest`, `deleteNotificationRequest`, `clearNotificationsRequest`
+- **AI** — `predictImage`, `fetchModelInfo`
+- **Detections** — `fetchDetections`, `fetchDetection`, `updateDetection`, `fetchStats`, `postDetection` (uses `X-Api-Key` + Bearer)
+- **Helpers** — `getWebSocketUrl()` (builds `ws(s)://<host>/api/v1/ws/live`), `getThreatLevel()`, and mappers `mapBackendDetection`, `mapBackendUser`, `mapSmsLog`, `mapSystemLog`, `mapBackendNotification` that translate snake_case backend payloads into the camelCase shapes the components expect.
+
+### Pages
+
+| File | Purpose |
+|---|---|
+| `pages/Login.jsx` | Email/password sign-in; stores token + user and redirects to `/home`. |
+| `pages/Register.jsx` | Account creation with role, phone, location and SMS opt-in fields. |
+| `pages/ForgotPassword.jsx` | Requests a reset link; when the backend returns `reset_url` (email not configured), it surfaces a button that opens the reset screen directly. |
+| `pages/ResetPassword.jsx` | Reads `?token=`, validates the new password, submits, and redirects to login. |
+| `pages/HomePage.jsx` | The authenticated shell. Owns the WebSocket connection, detection log state, notification state (unread count, add/read/clear), the SOS handler, tab routing (`home`, `dashboard`, `sms`, `stakeholder`, `admin`), and mounts `Header`, `NotificationDrawer`/`NotificationToast`. Maps incoming `new_detection` and `emergency_sos` events into alerts and persisted notifications. |
+
+### Components
+
+| File | Purpose |
+|---|---|
+| `Header.jsx` | Brand, role-aware navigation (per-role tab list), notification bell with unread badge, profile menu, logout. |
+| `Overview.jsx` | Landing dashboard: KPI cards (threats, species seen, last detection, live clients) from `/stats`, recent alerts, embedded `DetectionLogs`. |
+| `LiveMonitor.jsx` | Camera acquisition (`getUserMedia`), provider switch (`local` / `roboflow`), scanning loop with an in-flight guard so slow inferences cannot queue up, canvas overlay drawing species-coloured boxes, scanning status, model-capability warning from `/ai/model`, and detection dispatch (`onPrediction`). |
+| `DetectionLogs.jsx` | Table/cards of detections with species colour, confidence, level, location, camera and SMS status; used by `Overview` and rendered directly by `HomePage` when the path is `/detections`. |
+| `DetectionsPage.jsx` | Self-contained detection detail screen (fetches `/detections` itself, filters, per-detection drill-down). Mounted by the `/detections` route in `App.jsx`. (Default export is named `DetectionsPAge` — a typo, but consistent between its declaration and export.) |
+| `SmsCenter.jsx` | Recipient selection from real users, composer, send action, SMS history, configuration view. Largest component in the app; also home to the shadowed-`sendSms` bug described in [Known limitations](#known-limitations-and-housekeeping). |
+| `AdminPanel.jsx` | Control Panel: user table with create/edit/delete, active toggle, phone/sector editing, plus read-only system activity log and small stat cards. |
+| `StakeholderPortal.jsx` | Landowner / village-head perspective: local sector context, recent detections affecting their area, and the SOS button. |
+| `NotificationDrawer.jsx` | Slide-over list of notifications with per-type icons (including the red `AlertTriangle` for `emergency_sos`), mark-read, delete and clear-all. |
+| `NotificationToast.jsx` | Transient toast for new alerts, with sound and dismiss. |
+| `NotificationPanel.jsx` | Earlier panel-style notification UI — **not imported anywhere**. |
+| `CameraFeed.jsx` | Earlier camera-feed component — **not imported anywhere**; `LiveMonitor` superseded it. |
+| `AuthLayout.jsx` | Shared split-screen layout for the auth pages. |
+| `ProtectedRoute.jsx` | Session guard described above. |
+
+### Hooks
+
+| File | Purpose |
+|---|---|
+| `useWebSocket.js` | Opens `getWebSocketUrl()`, reconnects with back-off, sends periodic `ping`, parses JSON and forwards each message to `onEvent`. Cleans up on unmount. |
+| `useRoboflowStream.js` | Manages a Roboflow WebRTC inference session (start/stop, status, errors) through `utils/roboflowStream.js`; reports `supported` based on configuration. |
+
+### Utils
+
+| File | Purpose |
+|---|---|
+| `detectionModel.js` | The inference facade: `predictWildlife`, `runDetection`, `runTeachableDetection`, `captureFrame` (canvas → JPEG base64, downscaled), `mapPredictResponse`, `getModelInfo`, plus class metadata (`DETECTION_SPECIES`, `CLASS_META`, `resolveClassMeta`, `TARGET_SPECIES`). |
+| `teachableMachine.js` | Optional Teachable Machine image model (loaded from its metadata URL); `predictFromVideo` classifies a video element. |
+| `roboflowStream.js` | Low-level Roboflow client: `isRoboflowConfigured`, `startRoboflowStream`, `stopRoboflowStream`, `mapRoboflowOutput`, `ROBOFLOW_MODEL_NAME`. |
+| `handleWildlifePrediction.js` | Bridges a prediction to app state: adds the detection to the log, raises a notification, plays the alert sound, and posts a persisted notification. |
+| `wildlifePrediction.js` | Builds the notification object (title, message, alert level) for a species/confidence pair. |
+| `wildlifeDetection.js` | Re-export barrel for the detection module. |
+| `audio.js` | WebAudio tones for notification, threat, SMS, camera-connected and camera-disconnected events. |
+| `datetime.js` | `formatDate`, `formatDateTime`, `getDayGroup` for log grouping. |
+| `types.js` | Type/shape helpers and sample defaults — **not imported anywhere**. |
+
+### Styling
+
+Tailwind 4 with utilities written inline. The visual language is a dark teal palette (`#061418`, `#0c2227`, `#1d3a3a`), mint accents (`#7fe6b4`), and red for critical states. Global rules live in `src/index.css`.
+
+---
+
+## Backend deep dive
+
+### `main.py`
+- Configures logging.
+- Defines `DEMO_USERS` and `seed_demo_users()`.
+- Lifespan: `init_db()` → seed → serve.
+- Creates the `FastAPI` app (title/description/version), enables permissive CORS (`*` origins, methods, headers), mounts the eight routers under `/api/v1`, and exposes `GET /` and `GET /health`.
+
+### `routes.py` (all endpoints in one module)
+- **Routers:** root (`detections`, `stats`, `ws`), `auth`, `users`, `sms`, `alerts`, `logs`, `ai`, `notifications`.
+- **`_verify_key`** — accepts either a matching `X-Api-Key` or a valid Bearer JWT for an active user; used by detection ingestion and the AI endpoints.
+- **`_threat_level`** — same HIGH/MEDIUM/LOW scale as the frontend so levels agree.
+- **`_parse_json`** — safe decode of the JSON-in-TEXT columns on `sms_config`.
+- **`_log_system_event`** — writes a `SystemLog`, swallowing failures so audit logging can never break a request.
+- **`_hash_reset_token` / `_as_utc`** — SHA-256 hashing of reset tokens and SQLite naive-datetime handling.
+
+### `schemas.py`
+Pydantic v2 models with validators: species normalisation against `VALID_SPECIES = {elephant, tiger, leopard, unknown}`, role validation against `VALID_ROLES`, lowercase email normalisation, status/alert-level regex patterns, and a `field_serializer` that re-attaches UTC to naive SQLite datetimes.
+
+### `database.py`
+Async engine + `async_sessionmaker`, declarative `Base`, the seven ORM models, `get_db()` dependency, and `init_db()` which runs `create_all` and then `_add_sqlite_columns()` — an idempotent mini-migration that adds `detections.status`, `detections.alert_level` and `users.created_by` to older SQLite files.
+
+### `auth.py`
+`hash_password` / `verify_password` (bcrypt), `create_access_token` / `decode_token` (HS256), `get_current_user` (validates token, loads user, rejects inactive accounts), `get_optional_user` (defined but unused), and `require_role(*roles)` which returns a dependency enforcing role membership.
+
+### `notifications.py`
+`build_alert_message()` renders the multi-line alert text (species, confidence, GPS or "no fix", device). `deliver_sms()` is the single delivery path used by detection alerts, manual broadcasts and SOS: it calls `sms_sender.send_sms()` once per broadcast and writes one `SmsLog` row per recipient, with status `sent` (TextBee accepted the batch), `failed` (configured but rejected) or `simulated` (no `TEXTBEE_API_KEY`). SOS also passes `log_skipped=True`, so an account with no number on file still gets a row with status `no_phone` — the in-app notification reaches them, the history shows they were not texted.
+
+### `sms_sender.py`
+TextBee HTTP client. `is_sms_configured()` checks the key, `normalise_phone()` converts stored numbers to E.164 (strips spaces, `00` prefixes, adds `TEXTBEE_DEFAULT_COUNTRY_CODE` when needed), `send_sms()` posts `{recipients[], message, deviceId?}` and returns an `SmsResult(ok, batch_id, error)` instead of raising, `fetch_devices()`/`gateway_status()` power `GET /sms/status`.
+
+### `emailer.py`
+Brevo HTTP API client. `_sender()` parses `EMAIL_FROM` via `parseaddr`, `is_email_configured()` gates the dev fallback, `_reset_email_body()` builds text + styled HTML, and `send_password_reset_email()` returns `True` only on a < 300 response. All HTML interpolations are escaped.
+
+### `websocket_manager.py`
+`ConnectionManager` holds a locked list of sockets, implements `connect` / `disconnect` / `broadcast` (drops dead sockets after a failed send) and exposes `active_connections` for `/stats`. A module-level `manager` singleton is imported by the routes.
+
+### `ai/detector.py`
+- Resolves the checkpoint (`WILDLIFE_MODEL_PATH` or bundled `yolo11n.pt`) and loads it lazily under a thread lock, reloading if the path changes.
+- `get_model_info()` returns classes, class count, `imgsz`, and which of `elephant`/`tiger`/`leopard` the checkpoint cannot emit.
+- `decode_image_b64()` strips `data:` prefixes, pads base64, and decodes with OpenCV.
+- `run_detection()` runs `model.predict`, sorts by confidence, caps at `max_detections`, builds boxes/counts/total/latency, and optionally returns an annotated JPEG.
+- Inference is called through `asyncio.to_thread` so the event loop stays responsive.
+
+### `ai/species_classifier.py`
+Optional three-class classifier using `wildguard_etl_cls.pt` + `.json`; `available()` and `classify_crop_bgr()` are used to refine a detection crop when the weights are present.
+
+### `pi_client_example.py`
+Standalone helper (never imported) demonstrating `send_detection(species, confidence, lat, lon, gps_fix, device_id, image_path)` with `httpx`, plus a `__main__` smoke test.
+
+---
+
+## Data model
+
+All tables are created automatically. SQLite by default; swap `DATABASE_URL` for PostgreSQL without code changes.
+
+### `detections`
+| Column | Type | Notes |
+|---|---|---|
+| `id` | int PK | |
+| `species` | str(64) | one of elephant / tiger / leopard / unknown |
+| `confidence` | float | 0–1 |
+| `latitude`, `longitude` | float? | GPS if available |
+| `gps_fix` | bool | satellite fix flag |
+| `detected_at` | datetime (tz) | server time when omitted |
+| `device_id` | str(64) | default `unit-01` |
+| `status` | str(32) | `active` / `resolved` / `dismissed` |
+| `alert_level` | str(16)? | LOW / MEDIUM / HIGH / CRITICAL |
+| `sms_sent` | bool | result of the SMS path |
+| `sms_error` | str(256)? | failure detail |
+| `image_b64` | text? | optional thumbnail |
+
+### `users`
+`id`, `username`, `email` (unique, indexed), `hashed_password`, `role`, `phone`, `location_name`, `sms_alerts_enabled`, `is_active`, `created_by`?, `created_at`.
+
+### `password_reset_tokens`
+`id`, `user_id`, `token_hash` (unique, SHA-256 of the raw token), `expires_at`, `used_at`?, `created_at`.
+
+### `sms_logs`
+`id`, `timestamp`, `recipient_phone`, `recipient_name`, `recipient_role`, `message`, `status` (`sent` / `failed` / `simulated` / `no_phone`), `trigger_type` (`manual_broadcast`, `emergency_sos`, …), `sighting_id`?, `sector`?, `sent_by`.
+
+### `sms_config`
+Single row keyed `default`: `auto_alert_enabled`, `alert_levels` (JSON text), `selected_species` (JSON text), `default_sender_name`, plus a legacy `twilio_configured` column that the API no longer reads (provider state comes from the environment).
+
+### `notifications`
+`id`, `user_id`, `client_id`?, `title`, `message`, `type` (`threat`, `emergency_sos`, `system`, `sms`, …), `location`?, `alert_level`?, `is_read`, `created_at`. Unique constraint on `(user_id, client_id)` gives idempotent delivery.
+
+### `system_logs`
+`id`, `timestamp`, `user`, `ip`, `action`, `details`, `is_suspicious`.
+
+---
+
+## API reference
+
+Base URL: `http://localhost:8000/api/v1` · interactive docs at `/docs`.
+
+Auth legend: **JWT** = `Authorization: Bearer <token>` · **Key** = `X-Api-Key` **or** JWT · **public** = no auth.
+
+### Health
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/` (no prefix) | public | `{"status":"ok"}` |
+| GET | `/health` (no prefix) | public | `{"status":"healthy"}` |
+
+### Auth
+| Method | Path | Auth | Body / notes |
+|---|---|---|---|
+| POST | `/auth/register` | public | `{username, email, password, role, phone, location_name, sms_alerts_enabled}` → `{access_token, token_type, user}` |
+| POST | `/auth/login` | public | `{email, password}` → token + user; failed attempts are logged as suspicious; inactive accounts get `403` |
+| GET | `/auth/me` | JWT | current `UserOut` |
+| POST | `/auth/forgot-password` | public | `{email}` → `{status, message, reset_url?}`; always the same message (no account probing). `reset_url` is returned only when email is unconfigured and `APP_ENV != production` |
+| POST | `/auth/reset-password` | public | `{token, password}`; single-use token, expired/used links rejected, other tokens for the user are deleted |
+
+### Users
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/users` | JWT admin/operator | all users, newest first |
+| POST | `/users` | JWT admin/operator | create; operators cannot create admins |
+| GET | `/users/all` | JWT any role | **active** users only — the SMS recipient source |
+| GET | `/users/{id}` | JWT | single user |
+| PUT | `/users/{id}` | JWT admin/operator | partial update; `password` re-hashed; operators limited to their own users |
+| DELETE | `/users/{id}` | JWT admin | deletes; admin accounts are protected |
+
+### Detections
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/detections` | Key | ingest an event → `{id, message, sms_queued}` (201) |
+| GET | `/detections` | public | filters `species`, `device_id`, `from_dt`, `to_dt`, `limit` (≤1000), `offset` |
+| GET | `/detections/{id}` | public | single record or 404 |
+| PATCH | `/detections/{id}` | JWT | update `status` and/or `alert_level` |
+| GET | `/stats` | public | `total_detections`, `by_species`, `last_detection`, `live_dashboard_clients` |
+
+Ingest example:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/detections \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: $API_SECRET_KEY" \
+  -d '{"species":"elephant","confidence":0.93,"latitude":12.9716,"longitude":77.5946,"gps_fix":true,"device_id":"unit-01"}'
+```
+
+### AI
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/ai/model` | Key | active checkpoint, classes, missing target species |
+| POST | `/ai/predict` | Key | `{image, confidence_threshold=0.25, iou_threshold=0.45, max_detections=20, draw_boxes=false}` → detections, counts, total, `inference_ms`, image size, optional annotated image |
+
+### SMS
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/sms/config` | JWT | auto-alert flag, alert levels, selected species, sender name, plus `sms_configured` / `sms_provider` (from the env, not editable) |
+| PUT | `/sms/config` | JWT | partial update of the stored fields |
+| GET | `/sms/status` | JWT | pings TextBee: `{provider, configured, device_id, devices[], error}` |
+| POST | `/sms/send` | JWT | `{recipient_ids[], message, trigger_type, sector?, sighting_id?}` → created `SmsLog[]`; empty `recipient_ids` falls back to all active users with SMS enabled; one TextBee batch per call |
+| GET | `/sms/logs` | JWT | filters `status`, `trigger_type`, `limit` (≤500); admins see every row, other roles only the rows they sent (`sent_by`) |
+
+### Alerts
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/alerts/sos` | JWT | `{location?, message?, latitude?, longitude?}` → `{acknowledged, message, broadcast_count}`; notifies **every** active user |
+
+### System logs
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/logs` | JWT admin/operator | `limit` (≤500), newest first |
+
+### Notifications
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/notifications` | JWT | current user's notifications, `limit` (≤500) |
+| POST | `/notifications` | JWT | create for current user; same `client_id` returns the existing row |
+| POST | `/notifications/read-all` | JWT | mark all read (204) |
+| PATCH | `/notifications/{id}/read` | JWT | mark one read |
+| DELETE | `/notifications/{id}` | JWT | delete one (204) |
+| DELETE | `/notifications` | JWT | clear all for the user (204) |
+
+---
+
+## Real-time protocol (WebSocket)
+
+**Endpoint:** `ws(s)://<host>/api/v1/ws/live` (no auth handshake; connect from the dashboard).
+
+Server → client messages:
+
+```jsonc
+// new detection
+{ "event": "new_detection",
+  "data": { "id": 42, "species": "elephant", "confidence": 0.93,
+            "latitude": 12.9716, "longitude": 77.5946, "gps_fix": true,
+            "detected_at": "2026-01-01T10:00:00+00:00",
+            "device_id": "unit-01", "sms_sent": false } }
+
+// emergency SOS
+{ "event": "emergency_sos",
+  "data": { "event_id": "3f9c…", "user": "Administrator", "location": "Sector B3",
+            "message": "WILDGUARD EMERGENCY SOS: …", "recipient_count": 6,
+            "timestamp": "2026-01-01T10:05:00+00:00" } }
+
+// keep-alive reply
+{ "event": "pong" }
+```
+
+Client → server: send the text `ping` to receive `pong`. The frontend `useWebSocket` hook reconnects with back-off and re-subscribes automatically.
+
+`new_detection` events are ephemeral UI signals; the durable record is the `Notification` row written by the backend (`client_id = ws-<detection_id>`). For `emergency_sos`, the client posts a notification with `client_id = sos-<event_id>`, which the unique `(user_id, client_id)` constraint de-duplicates even if the event is re-delivered.
+
+---
+
+## Detection and alerting pipeline
+
+### Ingestion (`POST /detections`)
+
+1. Authenticate via `X-Api-Key` or an active user's JWT.
+2. Validate and normalise the payload (species list, confidence range, GPS bounds).
+3. Persist the `Detection`; default `detected_at` to server UTC.
+4. Apply the SMS center settings: `auto_alert_enabled`, then `selected_species`, then `alert_levels` (the level comes from `_threat_level`). If all three pass, `deliver_sms()` renders the alert text and sends it as one TextBee batch to every active user with `sms_alerts_enabled` and a phone number. `sms_sent`/`sms_error` are stored accordingly, and failures never abort the ingest.
+5. Create one `Notification` per **active** user (`type="threat"`, `client_id="ws-<id>"`, alert level from confidence). Failures here roll back only the notification block — the detection is already saved.
+6. Broadcast `new_detection` to every connected dashboard.
+
+### Threat levels
+
+| Condition | Level |
+|---|---|
+| species `unknown` / `no threat` | LOW |
+| confidence ≥ 0.85 | HIGH |
+| confidence ≥ 0.60 | MEDIUM |
+| otherwise | LOW |
+
+The same scale is implemented in `backend/app/routes.py::_threat_level` and `frontend/src/api.js::getThreatLevel`.
+
+### Manual SMS broadcast (`POST /sms/send`)
+
+- Recipients = the selected `recipient_ids`, or all active users with `sms_alerts_enabled` when none are given.
+- One TextBee request carries every recipient; one `SmsLog` per recipient records status (`sent` / `failed` / `simulated` / `no_phone`), `trigger_type`, sector (payload or the recipient's location), optional `sighting_id` and the sending account in `sent_by`.
+- A `SystemLog` entry records the broadcast, with the provider error appended when TextBee refused it.
+- In the dashboard, recipients come from `GET /users/all`; users without a phone are visibly disabled and cannot be selected.
+
+### Emergency SOS (`POST /alerts/sos`)
+
+- Recipients = **every active user**; SMS opt-in and role filters are ignored deliberately (safety broadcast).
+- Each recipient gets a `Notification` (`type="emergency_sos"`, `alert_level="CRITICAL"`, `client_id="sos-<event_id>"`).
+- Each recipient **with a phone number** also gets an `SmsLog` row (`trigger_type="emergency_sos"`) and is included in the TextBee batch.
+- A `SystemLog` entry records the broadcast and location.
+- A single `emergency_sos` WebSocket broadcast informs live dashboards; the client's own notification insert de-duplicates via `client_id`.
+
+### SMS delivery status
+
+Outbound SMS goes through TextBee (`POST /gateway/send-sms`, `x-api-key` header). A `200` means TextBee queued the batch for your phone — not that the recipient received it. Delivery states are followed in the TextBee dashboard.
+
+- `TEXTBEE_API_KEY` set → real sends; `sms_configured` is `true` and `GET /sms/status` lists the registered devices.
+- `TEXTBEE_API_KEY` empty or missing → nothing leaves the machine; every row is written as `simulated` so the history, SOS flow and ingestion contract keep working.
+- Key present but rejected (401) → rows are written as `failed` and the reason is logged and returned by `GET /sms/status`. Errors never propagate to the detection ingest.
+
+---
+
+## AI inference
+
+### Backend detector (`/ai/predict`)
+
+- Checkpoint: bundled `backend/app/ai/models/yolo11n.pt` (pretrained COCO, 80 classes) unless `WILDLIFE_MODEL_PATH` points elsewhere.
+- Loaded lazily on first request under a thread lock, then cached. Cold start is much slower than warm inference (seconds vs. hundreds of milliseconds on CPU).
+- Input: base64 JPEG/PNG (with or without a `data:` prefix). Output: species, confidence, boxes in original-image pixels, per-species counts, total, `inference_ms`, image dimensions, optional annotated JPEG.
+- `GET /ai/model` reports the class list and `missing_target_species`, so the dashboard can warn when the active checkpoint cannot emit `tiger`/`leopard` instead of silently returning nothing.
+- **Important:** the bundled COCO checkpoint does not know tiger/leopard. A tiger photo is reported as some other COCO animal (e.g. `zebra`) with high confidence — a missing class appears as a *wrong* animal, not as "no detection". Point `WILDLIFE_MODEL_PATH` at a trained three-class `best.pt` for real results.
+- `draw_boxes: true` also runs the optional crop classifier (`ai/species_classifier.py`) when its weights are present, to refine each box to elephant/tiger/leopard.
+
+### Local scanning loop (frontend)
+
+`LiveMonitor` captures a frame via `captureFrame()` (canvas → downscaled JPEG → base64), posts it to `/ai/predict`, converts the response with `mapPredictResponse`, draws species-coloured boxes on an overlay canvas, and forwards confirmed detections to `handleWildlifePrediction` → detection log + notification + sound + persisted notification. A tick is skipped while the previous inference is still in flight, so a cold start cannot queue stale frames.
+
+### Roboflow provider (optional)
+
+When the three `VITE_ROBOFLOW_*` values are present, `useRoboflowStream` opens a WebRTC inference session against the configured workflow. Predictions arrive pre-annotated on the video, so the local overlay is suppressed; only the detection data populates the log/notifications.
+
+### Teachable Machine (optional)
+
+`utils/teachableMachine.js` can load an image model from its metadata URL and classify a video element. It is used only if invoked; the default path is backend YOLO.
+
+---
+
+## Password reset email (Brevo)
+
+1. Create a free Brevo account (<https://www.brevo.com>, 300 emails/day).
+2. **Settings → Senders, Domains, IPs → Senders → Add a sender** and verify the address with the 6-digit code Brevo sends.
+3. **Settings → SMTP & API → API Keys** → create a key.
+4. Set `BREVO_API_KEY` and `EMAIL_FROM` in `backend/.env`. `EMAIL_FROM` must match the verified sender.
+
+Without those values, `is_email_configured()` is false, `POST /auth/forgot-password` still answers normally but returns `reset_url` in development so the UI can show the link. In production (`APP_ENV=production`) the link is never returned.
+
+---
+
+## Device / Raspberry Pi integration
+
+Any edge device can submit detections with the shared secret:
+
+```bash
+export BACKEND_URL="http://<server-ip>:8000"
+export API_SECRET_KEY="<same as backend>"
+```
+
+```python
+from pi_client_example import send_detection
+
+send_detection("elephant", 0.91, latitude=12.9716, longitude=77.5946,
+               gps_fix=True, device_id="unit-01", image_path="frame.jpg")
+```
+
+The backend responds with `{ "id": 42, "message": "Detection #42 stored.", "sms_queued": false }` and immediately broadcasts the event to every live dashboard.
+
+Use a `device_id` that is stable per camera so history and filters stay meaningful.
+
+---
+
+## Edge deployment roadmap (Jetson Nano)
+
+The repository currently contains the dashboard, the API and a working YOLO inference path. The final field deployment adds the edge track below.
+
+### Fixed configuration
 
 | Item | Setting |
 |---|---|
 | Detector | YOLO11n trained for three classes |
 | Class IDs | `0=elephant`, `1=tiger`, `2=leopard` |
-| Input | `640 × 640` |
-| Initial confidence threshold | `0.75` |
-| Target | NVIDIA Jetson Nano Developer Kit |
+| Input size | `640 × 640` |
+| Initial confidence | `0.75` |
+| Target board | NVIDIA Jetson Nano Developer Kit |
 | Runtime | TensorRT |
-| Initial camera | USB webcam |
+| Camera | USB webcam first, CSI later |
 | Model flow | `wildlife_yolo11n_best.onnx` → `wildlife_yolo11n_best.engine` |
 
-The threshold is an initial deployment value. Any future change must be supported by recorded per-species false-positive/false-negative evaluation.
-
-## Dataset contract
-
-Use the existing YOLO-formatted train/validation/test split. Do not split it again unless inspection proves it is invalid or incomplete.
+### Dataset contract
 
 ```text
 wildlife-dataset/dataset/
@@ -59,223 +828,122 @@ wildlife-dataset/dataset/
 ```
 
 ```yaml
-train: C:/Users/Gunarakulan/Desktop/wildlife-dataset/dataset/train/images
-val: C:/Users/Gunarakulan/Desktop/wildlife-dataset/dataset/valid/images
-test: C:/Users/Gunarakulan/Desktop/wildlife-dataset/dataset/test/images
 nc: 3
 names: ["elephant", "tiger", "leopard"]
 ```
 
-Each label row is `class_id x_center y_center width height`, with coordinates normalized from 0 to 1. A frame may contain multiple animals/species. If datasets are merged, remap every annotation consistently to IDs 0–2 before verification.
+Each label row is `class_id x_center y_center width height`, normalised 0–1. Before training: verify image/label pairing, reject invalid or duplicate boxes, confirm only class IDs 0–2 appear, count instances per class, and visually inspect 50–100 annotated samples per class.
 
-### Dataset gate before training
-
-- Count images and labels for each split independently.
-- Find missing pairs, empty/invalid labels, corrupted or duplicate images, and invalid normalized boxes.
-- Confirm only IDs 0, 1, and 2 occur and that `data.yaml` name ordering agrees.
-- Count instances per class and identify imbalance.
-- Visualize **50–100 annotated samples per class** (150–300 total).
-- Do not use test results for repeated tuning.
-
-## Required development order
+### Development order
 
 1. Verify the three-class dataset.
-2. Set up training and run a short three-class sanity run.
-3. Run reproducible YOLO11n baseline experiments.
-4. Review loss/validation behavior overall and per class.
-5. Select the best validation checkpoint, then perform one final test evaluation.
+2. Short sanity training run.
+3. Reproducible YOLO11n baselines (record model, image size, epochs, batch, LR, augmentation, checkpoint, metrics).
+4. Review loss and per-class validation behaviour.
+5. Pick the best **validation** checkpoint, then run the test split **once**.
 6. Test unseen images and video.
-7. Export ONNX and verify prediction consistency.
-8. Inspect the actual Jetson OS/NVIDIA stack before changing packages.
-9. Build a compatible TensorRT engine and test images, then video, then USB camera.
-10. Benchmark real-time inference.
-11. Add counting, tracking, alerts, and extended logging only after core detection is stable.
+7. Export ONNX and confirm prediction consistency.
+8. Inspect the existing JetPack/L4T/CUDA/TensorRT stack before changing anything.
+9. Build a compatible TensorRT engine; test images → video → USB camera.
+10. Benchmark FPS, latency, CPU/GPU, RAM and temperature.
+11. Add counting, tracking, alerts and extended logging only after core detection is stable.
 
-## Training and evaluation
-
-Start with YOLO11n at 640×640, 50 epochs, and a batch size supported by the training GPU. Track exact software versions, dataset revision, model, image size, epochs, batch, learning rate, augmentation, checkpoint, and metrics for every experiment.
-
-| Experiment | Model | Image size | Epochs | Precision (E/T/L) | Recall (E/T/L) | mAP50 (E/T/L) | mAP50-95 (E/T/L) |
-|---|---:|---:|---:|---|---|---|---|
-| E1 | YOLO11n | 640 | 50 | Measured | Measured | Measured | Measured |
-| E2 | YOLO11n | 640 | 100 | Measured | Measured | Measured | Measured |
-| E3 | Lightweight alternative | 640 | 100 | Measured | Measured | Measured | Measured |
-
-Report Precision, Recall, mAP50, and mAP50–95 overall and per species. Check tiger/leopard confusion explicitly. Select `best.pt` based on validation performance; do not assume `last.pt` is best. The test split is for final evaluation only.
-
-Accuracy and Jetson performance are separate objectives: a high-mAP model may be too slow for Nano, while a fast model may miss/confuse animals.
-
-## Jetson Nano setup checklist
-
-### Hardware
-
-- Jetson Nano Developer Kit, adequate power supply, cooling, 64/128 GB microSD, display, keyboard/mouse, network.
-- USB webcam first; use CSI only after the USB workflow works.
-- Optional later: buzzer/LEDs, resistors, wiring/breadboard, and a suitable GPIO driver circuit.
-
-### First checkpoint — collect before installing/upgrading
+### Jetson checklist
 
 ```bash
-cat /etc/nv_tegra_release
-uname -m
-python3 --version
-lsb_release -a
+cat /etc/nv_tegra_release                 # L4T version
+uname -m; python3 --version
 nvcc --version
 dpkg -l | grep -E 'nvidia-jetpack|cuda|cudnn|nvinfer'
-python3 -c "import tensorrt as trt; print('TensorRT:', trt.__version__)"
-python3 -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
-sudo tegrastats
-ls /dev/video*
-hostname -I
-```
-
-Run `tegrastats` for about ten seconds and stop with `Ctrl+C`; retain the CPU/GPU/RAM/temperature/power baseline. Do **not** randomly upgrade JetPack or install CUDA, cuDNN, TensorRT, or PyTorch versions. Compatibility depends on the existing JetPack/L4T stack. Do not create the engine until the versions are known.
-
-### Camera verification
-
-```bash
-sudo apt update
+python3 -c "import tensorrt as trt; print(trt.__version__)"
+python3 -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 sudo apt install v4l-utils
 v4l2-ctl --list-devices
 v4l2-ctl --list-formats-ext -d /dev/video0
+sudo tegrastats            # capture ~10 s baseline, then Ctrl+C
 ```
 
-`/dev/video0` is common but not guaranteed. Confirm live camera output independently (for example, with `cheese`) before adding model inference.
+Do **not** train on the Jetson, do **not** upgrade JetPack/CUDA/TensorRT/PyTorch blindly, and do **not** create the engine before the versions are known. Camera, detector, tracker, logger and alerts should each be verified separately before integration. Report measured metrics only — never invented numbers.
 
-## Jetson deployment layout
+---
 
-```text
-~/wildlife-animal-detection/
-├── models/       # wildlife_yolo11n_best.onnx and generated .engine
-├── videos/       # unseen video tests
-├── test_images/  # unseen elephant/tiger/leopard images
-├── results/
-├── logs/
-├── scripts/
-├── config/config.yaml
-├── src/camera.py
-├── src/detector.py
-├── src/tracker.py
-├── src/logger.py
-├── src/main.py
-└── requirements.txt
-```
+## Scripts and commands
 
 ```bash
-mkdir -p ~/wildlife-animal-detection/{models,videos,test_images,results,logs,scripts,src,config}
-# From the training machine; replace the placeholders.
-scp models/checkpoints/wildlife_yolo11n_best.onnx USERNAME@JETSON_IP:~/wildlife-animal-detection/models/
-```
-
-Choose the ONNX-to-TensorRT conversion command only after confirming JetPack/L4T/TensorRT versions. Build the TensorRT engine on the compatible Jetson.
-
-## Jetson acceptance gates
-
-1. Verify Python, pip, OpenCV, PyTorch/CUDA, and TensorRT imports. Stop and investigate failures rather than reinstalling arbitrary packages.
-2. Run unseen elephant, tiger, and leopard image inference. At 0.75, inspect expected class labels and boxes.
-3. Run unseen wildlife video and inspect labels, confidence, bounding boxes, output video, misses, and false detections.
-4. Identify the USB camera device and run real-time inference.
-5. Display species-coloured boxes, class name, confidence, FPS, and measured latency.
-
-```text
-USB camera → frame → preprocessing → TensorRT YOLO11n → postprocessing/NMS
-           → species-coloured boxes + confidence → FPS/latency → display
-```
-
-Add class-wise counts after stable detection. Then add species-aware tracking to avoid counting the same animal in every frame. Alerts come last; require consecutive-frame confirmation (for example, four matching detections in five frames) before GPIO/SMS activity.
-
-## Benchmark evidence
-
-| Metric | Required result |
-|---|---|
-| Model/input/threshold | YOLO11n / 640×640 / 0.75 |
-| Precision, Recall, mAP50, mAP50–95 | Measured overall and for E/T/L |
-| FPS, average inference latency | Measured on final Jetson |
-| Pre/post-processing latency | Measured |
-| CPU/GPU use, RAM, temperature | Measured |
-| Counting/tracking | Demonstrated with actual behavior |
-
-Log at minimum timestamp, species, confidence, tracking ID (when enabled), count, and camera/source.
-
-## Existing dashboard and backend
-
-```text
-frontend/  React 19 + Vite + Tailwind dashboard
-backend/   FastAPI + async SQLAlchemy API
-```
-
-The backend can receive confirmed Jetson events through `POST /api/v1/detections` using `X-Api-Key`. It validates species/confidence/GPS, stores the event, and broadcasts `new_detection` through `WS /api/v1/ws/live`. It also exposes detection history/stats, JWT authentication, users, SMS configuration/logs, SOS, and system logs.
-
-Outbound SMS is currently disabled: the `twilio` dependency and its sender were removed so the project carries no third-party messaging library. `send_sms_alerts` in `backend/app/notifications.py` is a no-op that still renders and logs the alert text, so detection ingestion, the SMS history UI, and the log schema are unchanged and every broadcast is recorded with status `simulated`. Restoring delivery means reinstalling `twilio` and replacing that one function body; the call site needs no change.
-
-The backend already persists species, confidence, camera/device ID, time, location, optional thumbnail, lifecycle state, and SMS result. A future Jetson `logger.py` should submit confirmed detections with a stable device ID.
-
-### On-device browser inference
-
-The dashboard no longer uses randomized predictions. When the Live Monitor or camera feed starts "AI scanning", the browser captures a frame, JPEG-encodes it, and POSTs it to `POST /api/v1/ai/predict` (authenticated with the dashboard JWT or `X-Api-Key`). The endpoint runs the bundled Ultralytics checkpoint (`backend/app/ai/models/yolo11n.pt`) and returns detected species, confidence, bounding boxes, counts, and inference latency; the frontend draws species-coloured boxes over the video and logs confirmed events.
-
-- The bundled `yolo11n.pt` is the pretrained COCO checkpoint — it detects `elephant` (class 20) and other animals but not tiger/leopard. Swap in a trained three-class `best.pt` at the same path or set `WILDLIFE_MODEL_PATH` to it; the code reads `model.names` dynamically.
-- Measured on this COCO checkpoint: a tiger photograph is returned as `zebra` at ~88% confidence. A missing class is therefore reported as a *different* animal, not as no detection, so do not treat a low-species count as evidence of an empty frame.
-- `GET /api/v1/ai/model` reports the active checkpoint, its class list, and which target species it cannot emit. The Live Monitor uses it to show a warning when `tiger`/`leopard` are absent, which is what makes a checkpoint swap verifiable instead of silent.
-- The model is loaded lazily on the first request and cached; the first call is slower (model init + inference, measured ~6-9s cold and ~200-300ms warm on CPU).
-- `draw_boxes: true` optionally returns a base64 JPEG with boxes drawn (default off for speed).
-- The device events endpoint (`POST /api/v1/detections`) now also accepts a dashboard JWT, so browser detections persist like Jetson events.
-- Scan loops skip a tick while the previous inference is still in flight, so the cold-start call cannot queue up stale frames.
-
-### Run the dashboard locally
-
-```powershell
-# Terminal 1
+# backend
 cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r app\requirements.txt
+python -m venv venv && source venv/Scripts/activate     # Windows bash
+pip install -r app/requirements.txt
 uvicorn app.main:app --reload --port 8000
 
-# Terminal 2
+# backend, production-ish
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+
+# frontend
 cd frontend
 npm install
-npm run dev
+npm run dev        # Vite dev server with /api proxy
+npm run build      # production bundle into dist/
+npm run preview    # serve the built bundle
+npm run lint       # oxlint
+
+# quick backend import check
+cd backend && ./venv/Scripts/python.exe -c "import app.main; print('imports OK')"
 ```
 
-Open Vite’s displayed address (normally `http://localhost:5173`). FastAPI documentation is `http://localhost:8000/docs`.
+`commands.txt` in the repository root repeats the essentials.
 
-### Backend environment
+---
 
-Create `backend/.env`:
+## Troubleshooting
 
-```dotenv
-DATABASE_URL=sqlite+aiosqlite:///./wildguard.db
-API_SECRET_KEY=replace-with-a-long-device-secret
-JWT_SECRET_KEY=replace-with-a-long-random-jwt-secret
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-```
+| Symptom | Cause / fix |
+|---|---|
+| `ModuleNotFoundError: fastapi` | Activated the wrong interpreter — use the project virtualenv (`backend/venv/Scripts/python.exe`). |
+| `pip install -r requirements.txt` says the file is missing | The dependency list lives at `backend/app/requirements.txt`; there is no `backend/requirements.txt` even though `commands.txt` suggests one. |
+| Frontend calls fail with 404/`ECONNREFUSED` | Backend not running on port 8000, or you opened the Vite app on a different port without the proxy. |
+| WebSocket never connects | The proxy must forward upgrades (`ws: true` in `vite.config.js`, already set). Behind a reverse proxy, enable `Upgrade`/`Connection` headers. |
+| Live Monitor shows "model cannot detect tiger/leopard" | The bundled COCO checkpoint has no such classes; set `WILDLIFE_MODEL_PATH` to a trained three-class model. |
+| First AI request takes several seconds | Expected: the model is loaded lazily on first use and cached. |
+| Camera does not start | Only allowed on `localhost` or HTTPS; grant browser camera permission; close other apps holding the camera. |
+| No reset email | `BREVO_API_KEY`/`EMAIL_FROM` missing, or the sender is not verified in Brevo. In development the API returns `reset_url` instead. |
+| SMS rows say `simulated` | `TEXTBEE_API_KEY` is empty in `backend/.env`; add the key and restart the backend. |
+| SMS rows say `failed` / `/sms/status` returns 401 | TextBee rejected the key (revoked, typo, or pasted from a masked source). Issue a new one in the TextBee dashboard. |
+| `/sms/status` shows no devices | No Android phone is registered in the TextBee app, or it has never come online. |
+| "No phone number" rows in SMS Center | The account has an empty `phone`; add it in the Control Panel. |
+| `database is locked` after killing the server on Windows | Kill the whole process tree: `taskkill //PID <pid> //T //F`. |
+| Old SQLite schema after an update | Restart once — `init_db()` adds `status`, `alert_level` and `created_by` automatically. |
 
-`backend/app/database.py` calls `load_dotenv()`, so a `backend/.env` is picked up automatically at import. The dashboard authenticates with a dashboard JWT, so none of these are required to use the UI — they only matter for device/Jetson clients calling `/detections` with `X-Api-Key`, and for signing those JWTs. If `backend/.env` is absent, `API_SECRET_KEY` falls back to the literal `change_me`, which must not be used outside local development.
+---
 
-### Password reset email (Brevo)
+## Security notes
 
-Reset links are delivered through Brevo's transactional API. No domain is required, but the sender address must be verified in Brevo:
+- **Rotate before deploying:** `JWT_SECRET_KEY`, `API_SECRET_KEY`, all demo passwords.
+- CORS is currently wide open (`allow_origins=["*"]`) — restrict it to your dashboard origin.
+- The WebSocket endpoint has no authentication handshake; anyone who can reach it receives broadcast payloads. Add token validation before exposing it publicly.
+- `/detections`, `/detections/{id}` and `/stats` are intentionally unauthenticated for read; tighten if the data is sensitive.
+- `VITE_*` values are embedded in the client bundle — use a workspace-restricted Roboflow key (or the proxy alternative) rather than a personal one.
+- Never commit a real `backend/.env`. Templates only.
+- Reset links are single-use and SHA-256 hashed at rest; requesting a new link does not invalidate links already emailed.
+- `routes.py` logs a `DEBUG-RESET-LINK` warning line; remove it before production.
 
-1. Create a free account at [brevo.com](https://www.brevo.com) (300 emails/day).
-2. Open **Settings → Senders, Domains, IPs → Senders → Add a sender**, enter the From name and From email, then enter the 6-digit code Brevo emails to that address.
-3. Create an API key under **Settings → SMTP & API → API Keys**.
-4. Add both values to `backend/.env`:
+---
 
-```dotenv
-BREVO_API_KEY=your-brevo-api-key
-EMAIL_FROM="WildGuard AI <your-verified-sender@example.com>"
-```
+## Known limitations and housekeeping
 
-`EMAIL_FROM` must match the verified sender. Free mailboxes (`gmail.com`, `yahoo.com`) can be verified but not authenticated, so they are more likely to be filtered as spam; authenticate a domain in Brevo for production deliverability. Without these values, the forgot-password screen shows the reset link directly in development.
+- **SMS is simulated.** No transport ships with the project; all logs read `simulated`.
+- **`SmsCenter.jsx` shadowing bug.** The file imports `sendSms` from `../api` but declares a local `const sendSms` further down; the local declaration wins, and its call site invokes itself recursively. Sending an SMS from the center therefore throws a stack overflow instead of POSTing to `/sms/send`. The imported helper is flagged as unused by `oxlint` because of this.
+- **`draw_boxes: true` duplicates detections** in `ai/detector.py`: boxes are appended once in the main loop and again inside the drawing branch, so `detections` repeats each box (while `counts` is computed before the second pass). Keep `draw_boxes` off, or fix the second loop to mutate instead of append.
+- **Bundled checkpoint limitation** — COCO classes only; tiger/leopard are absent.
+- **Unused modules:** `frontend/src/types.js`, `components/CameraFeed.jsx`, `components/NotificationPanel.jsx` are not imported anywhere; `api.js::fetchDetection`, `api.js::updateDetection`, and a handful of `utils/*` exports have no callers; `backend/app/auth.py::get_optional_user` is never used.
+- **Unused declarations:** `oxlint` reports 11 warnings — unused icons `Bell`, `ChevronDown`, `Clock3`, `Smartphone` and the `showSettings` state in `SmsCenter.jsx`; an unused `loading` state in `AdminPanel.jsx`; an unused `Feature` in `AuthLayout.jsx`; an unused `currentUser` prop in `LiveMonitor.jsx`; an unused `catch (error)` binding in `HomePage.jsx`.
+- **Committed artifacts:** 20 `.pyc` files under `backend/app/**/__pycache__/` are tracked in git; `backend/.gitignore` only ignores `venv` and `venv311`.
+- **Duplicate dependency root:** the repository-root `package.json` + `node_modules` exist only for `@roboflow/inference-sdk`, which `frontend/package.json` already declares.
+- `backend/app/README.md` predates the removal of Twilio and describes endpoints without the auth/notification layers — prefer this document and `/docs`.
+- The default database file `backend/wildguard.db` is committed; delete it to start from a clean seed.
 
-The Jetson integration must use the same `API_SECRET_KEY` and a `BACKEND_URL`. Keep this device key separate from dashboard JWT credentials.
+---
 
-## Development rules and final demo
+## License and credits
 
-- Keep training/deployment environments separate; do not train on Nano or continuously tune with test data.
-- Keep thresholds and camera settings in configuration files.
-- Test camera, detector, tracker, logger, and alerts separately before integration.
-- Change development secrets/demo passwords and harden public endpoints/CORS before production.
-
-The final demonstration should show: three-class annotations; training/validation graphs; per-class and overall metrics; unseen image/video output; ONNX/TensorRT conversion; live Jetson camera inference with boxes/confidence/FPS/latency/counts; logged dashboard events; and tracking/alerts only once core detection works.
+Academic / project work — add an explicit license before distributing. Built with FastAPI, SQLAlchemy, Ultralytics YOLO, React, Vite and Tailwind CSS; optional hosted inference via Roboflow; transactional email via Brevo.

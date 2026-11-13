@@ -195,6 +195,23 @@ const HomePage = () => {
           timestamp: mapped.timestamp,
         });
       }
+
+      //an SOS reaches every connected user, whatever their role
+      if (message.event === "emergency_sos" && message.data) {
+        const data = message.data;
+        addNotification({
+          id: `ws-sos-${data.event_id || data.timestamp || Date.now()}`,
+          clientId: data.event_id ? `sos-${data.event_id}` : undefined,
+          title: "Emergency SOS",
+          message:
+            data.message ||
+            `${data.user || "An operator"} triggered an emergency SOS.`,
+          type: "emergency_sos",
+          location: data.location || "",
+          alertLevel: "CRITICAL",
+          timestamp: data.timestamp || new Date().toISOString(),
+        });
+      }
     },
   });
 
