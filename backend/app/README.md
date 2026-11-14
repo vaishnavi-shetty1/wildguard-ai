@@ -7,7 +7,7 @@ FastAPI backend for the WildGuard AI wildlife detection system.
 - **GET /api/v1/detections** — query/filter the detection log
 - **GET /api/v1/stats** — species counts and live dashboard stats
 - **WebSocket /api/v1/ws/live** — push new detections to dashboard clients in real time
-- **SMS alerts** via Twilio on every confirmed detection
+- **SMS alerts** via TextBee on every confirmed detection
 - **SQLite** by default; swap to PostgreSQL by changing `DATABASE_URL`
 
 ---
@@ -27,7 +27,7 @@ pip install -r requirements.txt
 
 # 4. Configure environment
 cp .env.example .env
-nano .env                         # Fill in API key, Twilio creds, recipient numbers
+nano .env                         # Fill in API key and TextBee credentials
 ```
 
 ### `.env` fields
@@ -36,10 +36,8 @@ nano .env                         # Fill in API key, Twilio creds, recipient num
 |---|---|
 | `DATABASE_URL` | SQLite (default) or PostgreSQL connection string |
 | `API_SECRET_KEY` | Shared secret — set the same value on your Raspberry Pi |
-| `TWILIO_ACCOUNT_SID` | From your Twilio console |
-| `TWILIO_AUTH_TOKEN` | From your Twilio console |
-| `TWILIO_FROM_NUMBER` | Your Twilio phone number (E.164 format, e.g. `+1xxxxxxxxxx`) |
-| `ALERT_RECIPIENTS` | Comma-separated list of numbers to SMS (e.g. `+91xxxxxxxxxx,+91xxxxxxxxxx`) |
+| `TEXTBEE_API_KEY` | From your TextBee dashboard |
+| `TEXTBEE_DEVICE_ID` | Registered Android gateway device (optional) |
 
 ---
 

@@ -182,6 +182,7 @@ class SmsLogOut(BaseModel):
     recipient_phone: str
     recipient_name: str
     recipient_role: str
+    recipient_id: Optional[int] = None
     message: str
     status: str
     trigger_type: str

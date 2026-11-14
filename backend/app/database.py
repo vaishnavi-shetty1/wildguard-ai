@@ -83,6 +83,8 @@ class SmsLog(Base):
     recipient_phone: Mapped[str] = mapped_column(String(32), default="")
     recipient_name: Mapped[str] = mapped_column(String(64), default="")
     recipient_role: Mapped[str] = mapped_column(String(32), default="custom")
+    # Account the message was addressed to; lets users see messages they received.
+    recipient_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     message: Mapped[str] = mapped_column(String(512), default="")
     status: Mapped[str] = mapped_column(String(16), default="simulated")  
     trigger_type: Mapped[str] = mapped_column(String(32), default="manual_broadcast") 
@@ -100,7 +102,6 @@ class SmsConfig(Base):
     alert_levels: Mapped[str] = mapped_column(String(256), default='["HIGH","CRITICAL"]')  
     selected_species: Mapped[str] = mapped_column(String(512), default='["elephant","tiger","leopard"]')  
     default_sender_name: Mapped[str] = mapped_column(String(64), default="WILDGUARD")
-    twilio_configured: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -162,6 +163,8 @@ def _add_sqlite_columns(sync_conn) -> None:
     sms_columns = {col["name"] for col in inspector.get_columns("sms_logs")}
     if "sent_by" not in sms_columns:
         sync_conn.execute(sa.text("ALTER TABLE sms_logs ADD COLUMN sent_by VARCHAR(64) DEFAULT ''"))
+    if "recipient_id" not in sms_columns:
+        sync_conn.execute(sa.text("ALTER TABLE sms_logs ADD COLUMN recipient_id INTEGER"))
 
 async def get_db() -> AsyncSession: 
     async with SessionLocal() as session:

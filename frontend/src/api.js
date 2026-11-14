@@ -313,6 +313,7 @@ export function mapSmsLog(l) {
     recipientPhone: l.recipient_phone || "",
     recipientName: l.recipient_name || "",
     recipientRole: l.recipient_role || "custom",
+    recipientId: l.recipient_id ?? null,
     message: l.message || "",
     status: l.status || "simulated",
     triggerType: l.trigger_type || "manual_broadcast",

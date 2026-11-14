@@ -30,7 +30,7 @@ The long-term deployment target is an **NVIDIA Jetson Nano** running a TensorRT-
 15. [Real-time protocol (WebSocket)](#real-time-protocol-websocket)
 16. [Detection and alerting pipeline](#detection-and-alerting-pipeline)
 17. [AI inference](#ai-inference)
-18. [Password reset email (Brevo)](#password-reset-email-brevo)
+18. [Password reset flow](#password-reset-flow)
 19. [Device / Raspberry Pi integration](#device--raspberry-pi-integration)
 20. [Edge deployment roadmap (Jetson Nano)](#edge-deployment-roadmap-jetson-nano)
 21. [Scripts and commands](#scripts-and-commands)
@@ -47,7 +47,7 @@ A camera watches a boundary. A detector recognises an animal. The event becomes:
 1. **A stored detection** — species, confidence, GPS, device ID, timestamp, optional thumbnail.
 2. **A dashboard alert** — pushed over WebSocket to every open dashboard, with a species-coloured overlay on the live video and an audible alert.
 3. **A saved notification** — one row per active user, so nobody misses an alert because they were logged out.
-4. **An SMS record** — logged in the SMS history with the rendered alert text (delivery is currently simulated; see [Detection and alerting pipeline](#detection-and-alerting-pipeline)).
+4. **An SMS record** — logged in the SMS history with the rendered alert text and sent through TextBee to every opted-in account with a number (recorded as `simulated` when no API key is configured; see [Detection and alerting pipeline](#detection-and-alerting-pipeline)).
 5. **A system log entry** — for audit and administration.
 
 On top of that, any signed-in user can press **SOS** to broadcast a critical emergency alert to *every* active account, regardless of SMS preferences.
@@ -60,7 +60,7 @@ On top of that, any signed-in user can press **SOS** to broadcast a critical eme
 - Email + password registration and login, bcrypt password hashing, JWT access tokens (HS256, 24 h default).
 - Protected routes in the frontend, token attached to every API call.
 - Forgot-password / reset-password flow with single-use, hashed, expiring reset tokens.
-- Email delivery through Brevo; falls back to showing the reset link in the UI when email is not configured (development only).
+- No email is sent: `/auth/forgot-password` returns the single-use reset link, and the UI shows it as a button.
 
 ### Roles
 Four roles — `admin`, `operator`, `landowner`, `village_head` — each with its own navigation and data scope.
@@ -77,21 +77,23 @@ Four roles — `admin`, `operator`, `landowner`, `village_head` — each with it
 - Overview screen with recent alerts and stakeholder-specific framing.
 
 ### SMS center
-- Recipient list built from **real registered users** only (`GET /users/all`), refreshed on mount, on a 20 s poll, and when the tab regains focus.
+- Recipient list built from **real registered users** only (`GET /users/all`), refreshed on mount, on a 20 s poll, and when the tab regains focus. The signed-in user is never listed as a recipient.
 - Users without a phone number are shown as "No phone number" and cannot be selected.
 - Message composer with trigger type, sector, and per-recipient logs.
-- Full SMS history with status and trigger filters.
+- Full SMS history with status and trigger filters. It is one table for every SMS path — manual broadcasts, automatic detection alerts and emergency SOS — re-read from `GET /sms/logs` on mount, every 20 s, on tab focus and after a send, so messages sent from another view still appear.
+- A non-admin sees the rows they **sent** plus the rows **addressed to them** (marked `received`, with the sender when there is one); admins audit every row and see `by <username>` under each message.
+- Status badges: `sent`, `failed`, `simulated` (no `TEXTBEE_API_KEY`), and `no_phone` (account had no number, so only the in-app notification reached it).
 - SMS configuration endpoint (auto-alert toggle, alert levels, selected species, sender name).
 
 ### Emergency SOS
-- One button, one POST, everyone notified: every active user gets an in-app notification, and every user with a phone number gets an SMS log entry.
+- One button, one POST, everyone notified: every active user gets an in-app notification, and every user with a phone number gets an SMS log entry. Accounts **without** a number still get an `SmsLog` row with status `no_phone`, so the history records that they were notified in-app but not texted.
+- The SOS text is the sender's own message (or a default line naming them); the generated event ID rides along only on the in-app notification and WebSocket payload, never in the SMS body.
 - Broadcast over WebSocket so all dashboards react immediately.
 - Client-side dedupe via `client_id` so a re-delivered event never becomes a duplicate notification.
 
 ### Administration (Control Panel)
 - User CRUD with role assignment, phone, sector/location, SMS opt-in and active flag.
 - Operators may only manage users they created and cannot grant `admin`.
-- Read-only system activity log with suspicious-event flagging (failed logins, password resets, SOS, SMS broadcasts).
 
 ### Stakeholder portal
 - Landowner / village-head view of recent detections, local alerts, and a dedicated SOS button.
@@ -118,8 +120,7 @@ Four roles — `admin`, `operator`, `landowner`, `village_head` — each with it
   │  notifications · detections · WebSocket        │
   ├────────────────────────────────────────────────┤
   │ ai/detector.py     ultralytics YOLO (lazy)     │
-  │ notifications.py   alert rendering (SMS stub)  │
-  │ emailer.py         Brevo transactional email   │
+  │ notifications.py   alert rendering + SMS send  │
   │ auth.py            bcrypt + JWT + role guard   │
   │ websocket_manager  broadcast hub               │
   ├────────────────────────────────────────────────┤
@@ -147,7 +148,7 @@ External/edge clients (Jetson, Raspberry Pi, scripts) talk to the same backend u
 | ORM | SQLAlchemy 2 (async) + `aiosqlite` |
 | Validation | Pydantic v2 |
 | Auth | `bcrypt` 4.2, `python-jose[cryptography]` |
-| HTTP client | `httpx` (Brevo, Pi example) |
+| HTTP client | `httpx` (TextBee, Pi example) |
 | Inference | `ultralytics` (YOLO11), `opencv-python-headless`, `numpy`, `onnxruntime` |
 | Config | `python-dotenv` |
 
@@ -186,7 +187,6 @@ wild/
 │       ├── auth.py               ← hashing, JWT, get_current_user, require_role
 │       ├── notifications.py      ← alert text rendering + shared SMS delivery
 │       ├── sms_sender.py         ← TextBee SMS transport (send, devices, status)
-│       ├── emailer.py            ← Brevo password-reset email
 │       ├── websocket_manager.py  ← ConnectionManager broadcast hub
 │       ├── pi_client_example.py  ← device-side POST example (not imported)
 │       ├── requirements.txt      ← Python dependencies
@@ -328,9 +328,6 @@ Demo users are seeded **without phone numbers**, so they appear in the SMS recip
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | JWT lifetime (24 h) |
 | `FRONTEND_URL` | `http://localhost:5173` | Base URL used to build password-reset links |
 | `RESET_TOKEN_EXPIRE_MINUTES` | `30` | Reset-link validity |
-| `APP_ENV` | `development` | In `production`, the reset link is never returned in the API response |
-| `BREVO_API_KEY` | — | Brevo transactional email key |
-| `EMAIL_FROM` | — | Verified sender, e.g. `"WildGuard AI <alerts@yourdomain.com>"` |
 | `WILDLIFE_MODEL_PATH` | bundled `yolo11n.pt` | Swap in a trained three-class checkpoint |
 | `BACKEND_URL` | — | Used by `pi_client_example.py` on the device |
 | `TEXTBEE_API_KEY` | — | TextBee API key; without it SMS is recorded as `simulated` and never sent |
@@ -338,7 +335,7 @@ Demo users are seeded **without phone numbers**, so they appear in the SMS recip
 | `TEXTBEE_DEFAULT_COUNTRY_CODE` | — | Prefix added to numbers saved without one (e.g. `91`) |
 | `TEXTBEE_BASE_URL` | `https://api.textbee.dev/api/v1` | Override for a self-hosted TextBee gateway |
 
-SMS goes out through [TextBee](https://textbee.dev): an Android phone with a SIM is registered as a device, and the backend POSTs to `/gateway/send-sms` with the `x-api-key` header. Legacy Twilio names (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `ALERT_RECIPIENTS`) are not read anywhere.
+SMS goes out through [TextBee](https://textbee.dev): an Android phone with a SIM is registered as a device, and the backend POSTs to `/gateway/send-sms` with the `x-api-key` header. TextBee is the only SMS provider; no Twilio or Brevo credentials are read.
 
 Example `backend/.env`:
 
@@ -348,8 +345,6 @@ API_SECRET_KEY=replace-with-a-long-device-secret
 JWT_SECRET_KEY=replace-with-a-long-random-jwt-secret
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 FRONTEND_URL=http://localhost:5173
-BREVO_API_KEY=
-EMAIL_FROM=
 TEXTBEE_API_KEY=
 TEXTBEE_DEVICE_ID=
 ```
@@ -450,9 +445,9 @@ Groups:
 | `LiveMonitor.jsx` | Camera acquisition (`getUserMedia`), provider switch (`local` / `roboflow`), scanning loop with an in-flight guard so slow inferences cannot queue up, canvas overlay drawing species-coloured boxes, scanning status, model-capability warning from `/ai/model`, and detection dispatch (`onPrediction`). |
 | `DetectionLogs.jsx` | Table/cards of detections with species colour, confidence, level, location, camera and SMS status; used by `Overview` and rendered directly by `HomePage` when the path is `/detections`. |
 | `DetectionsPage.jsx` | Self-contained detection detail screen (fetches `/detections` itself, filters, per-detection drill-down). Mounted by the `/detections` route in `App.jsx`. (Default export is named `DetectionsPAge` — a typo, but consistent between its declaration and export.) |
-| `SmsCenter.jsx` | Recipient selection from real users, composer, send action, SMS history, configuration view. Largest component in the app; also home to the shadowed-`sendSms` bug described in [Known limitations](#known-limitations-and-housekeeping). |
-| `AdminPanel.jsx` | Control Panel: user table with create/edit/delete, active toggle, phone/sector editing, plus read-only system activity log and small stat cards. |
-| `StakeholderPortal.jsx` | Landowner / village-head perspective: local sector context, recent detections affecting their area, and the SOS button. |
+| `SmsCenter.jsx` | Recipient selection from real users (never the signed-in user), composer, send action, unified SMS history with sent/received labelling, configuration view. Largest component in the app. |
+| `AdminPanel.jsx` | Control Panel: user table with create/edit/delete, active toggle, phone/sector editing, SMS settings and security cards, plus small stat cards. |
+| `StakeholderPortal.jsx` | Landowner / village-head perspective: recent detections affecting their area, the SOS button, and the message form. |
 | `NotificationDrawer.jsx` | Slide-over list of notifications with per-type icons (including the red `AlertTriangle` for `emergency_sos`), mark-read, delete and clear-all. |
 | `NotificationToast.jsx` | Transient toast for new alerts, with sound and dismiss. |
 | `NotificationPanel.jsx` | Earlier panel-style notification UI — **not imported anywhere**. |
@@ -513,13 +508,10 @@ Async engine + `async_sessionmaker`, declarative `Base`, the seven ORM models, `
 `hash_password` / `verify_password` (bcrypt), `create_access_token` / `decode_token` (HS256), `get_current_user` (validates token, loads user, rejects inactive accounts), `get_optional_user` (defined but unused), and `require_role(*roles)` which returns a dependency enforcing role membership.
 
 ### `notifications.py`
-`build_alert_message()` renders the multi-line alert text (species, confidence, GPS or "no fix", device). `deliver_sms()` is the single delivery path used by detection alerts, manual broadcasts and SOS: it calls `sms_sender.send_sms()` once per broadcast and writes one `SmsLog` row per recipient, with status `sent` (TextBee accepted the batch), `failed` (configured but rejected) or `simulated` (no `TEXTBEE_API_KEY`). SOS also passes `log_skipped=True`, so an account with no number on file still gets a row with status `no_phone` — the in-app notification reaches them, the history shows they were not texted.
+`build_alert_message()` renders the multi-line alert text (species, confidence, GPS or "no fix", device). `deliver_sms()` is the single delivery path used by detection alerts, manual broadcasts and SOS: it calls `sms_sender.send_sms()` once per broadcast and writes one `SmsLog` row per recipient, with status `sent` (TextBee accepted the batch), `failed` (configured but rejected) or `simulated` (no `TEXTBEE_API_KEY`). SOS also passes `log_skipped=True`, so an account with no number on file still gets a row with status `no_phone` — the in-app notification reaches them, the history shows they were not texted. Every row stores `sent_by` (who triggered the send, `system` for automatic alerts) and `recipient_id` (the addressee's `users.id`), which is what the history endpoint filters on: admins see all rows, everyone else sees their own sends plus messages addressed to them.
 
 ### `sms_sender.py`
 TextBee HTTP client. `is_sms_configured()` checks the key, `normalise_phone()` converts stored numbers to E.164 (strips spaces, `00` prefixes, adds `TEXTBEE_DEFAULT_COUNTRY_CODE` when needed), `send_sms()` posts `{recipients[], message, deviceId?}` and returns an `SmsResult(ok, batch_id, error)` instead of raising, `fetch_devices()`/`gateway_status()` power `GET /sms/status`.
-
-### `emailer.py`
-Brevo HTTP API client. `_sender()` parses `EMAIL_FROM` via `parseaddr`, `is_email_configured()` gates the dev fallback, `_reset_email_body()` builds text + styled HTML, and `send_password_reset_email()` returns `True` only on a < 300 response. All HTML interpolations are escaped.
 
 ### `websocket_manager.py`
 `ConnectionManager` holds a locked list of sockets, implements `connect` / `disconnect` / `broadcast` (drops dead sockets after a failed send) and exposes `active_connections` for `/stats`. A module-level `manager` singleton is imported by the routes.
@@ -566,10 +558,12 @@ All tables are created automatically. SQLite by default; swap `DATABASE_URL` for
 `id`, `user_id`, `token_hash` (unique, SHA-256 of the raw token), `expires_at`, `used_at`?, `created_at`.
 
 ### `sms_logs`
-`id`, `timestamp`, `recipient_phone`, `recipient_name`, `recipient_role`, `message`, `status` (`sent` / `failed` / `simulated` / `no_phone`), `trigger_type` (`manual_broadcast`, `emergency_sos`, …), `sighting_id`?, `sector`?, `sent_by`.
+`id`, `timestamp`, `recipient_phone`, `recipient_name`, `recipient_role`, `recipient_id`?, `message`, `status` (`sent` / `failed` / `simulated` / `no_phone`), `trigger_type` (`manual_broadcast`, `emergency_sos`, `auto_detection`, …), `sighting_id`?, `sector`?, `sent_by`.
+
+`sent_by` is the username behind the send (`system` for automatic detection alerts) and `recipient_id` is the `users.id` the message was addressed to. Together they drive history visibility: non-admins get `sent_by = their username OR recipient_id = their id`, admins get every row. Dedicated columns were chosen over matching on `recipient_name` or `recipient_phone`, since neither is unique or stable across edits.
 
 ### `sms_config`
-Single row keyed `default`: `auto_alert_enabled`, `alert_levels` (JSON text), `selected_species` (JSON text), `default_sender_name`, plus a legacy `twilio_configured` column that the API no longer reads (provider state comes from the environment).
+Single row keyed `default`: `auto_alert_enabled`, `alert_levels` (JSON text), `selected_species` (JSON text), `default_sender_name`.
 
 ### `notifications`
 `id`, `user_id`, `client_id`?, `title`, `message`, `type` (`threat`, `emergency_sos`, `system`, `sms`, …), `location`?, `alert_level`?, `is_read`, `created_at`. Unique constraint on `(user_id, client_id)` gives idempotent delivery.
@@ -597,7 +591,7 @@ Auth legend: **JWT** = `Authorization: Bearer <token>` · **Key** = `X-Api-Key` 
 | POST | `/auth/register` | public | `{username, email, password, role, phone, location_name, sms_alerts_enabled}` → `{access_token, token_type, user}` |
 | POST | `/auth/login` | public | `{email, password}` → token + user; failed attempts are logged as suspicious; inactive accounts get `403` |
 | GET | `/auth/me` | JWT | current `UserOut` |
-| POST | `/auth/forgot-password` | public | `{email}` → `{status, message, reset_url?}`; always the same message (no account probing). `reset_url` is returned only when email is unconfigured and `APP_ENV != production` |
+| POST | `/auth/forgot-password` | public | `{email}` → `{status, message, reset_url?}`; `reset_url` carries the single-use link, since no mail provider is configured |
 | POST | `/auth/reset-password` | public | `{token, password}`; single-use token, expired/used links rejected, other tokens for the user are deleted |
 
 ### Users
@@ -641,7 +635,7 @@ curl -X POST http://localhost:8000/api/v1/detections \
 | PUT | `/sms/config` | JWT | partial update of the stored fields |
 | GET | `/sms/status` | JWT | pings TextBee: `{provider, configured, device_id, devices[], error}` |
 | POST | `/sms/send` | JWT | `{recipient_ids[], message, trigger_type, sector?, sighting_id?}` → created `SmsLog[]`; empty `recipient_ids` falls back to all active users with SMS enabled; one TextBee batch per call |
-| GET | `/sms/logs` | JWT | filters `status`, `trigger_type`, `limit` (≤500); admins see every row, other roles only the rows they sent (`sent_by`) |
+| GET | `/sms/logs` | JWT | filters `status`, `trigger_type`, `limit` (≤500); admins see every row, other roles see the rows they sent (`sent_by`) plus the rows addressed to them (`recipient_id`) |
 
 ### Alerts
 | Method | Path | Auth | Notes |
@@ -702,7 +696,7 @@ Client → server: send the text `ping` to receive `pong`. The frontend `useWebS
 1. Authenticate via `X-Api-Key` or an active user's JWT.
 2. Validate and normalise the payload (species list, confidence range, GPS bounds).
 3. Persist the `Detection`; default `detected_at` to server UTC.
-4. Apply the SMS center settings: `auto_alert_enabled`, then `selected_species`, then `alert_levels` (the level comes from `_threat_level`). If all three pass, `deliver_sms()` renders the alert text and sends it as one TextBee batch to every active user with `sms_alerts_enabled` and a phone number. `sms_sent`/`sms_error` are stored accordingly, and failures never abort the ingest.
+4. Apply the SMS center settings: `auto_alert_enabled`, then `selected_species`, then `alert_levels` (the level comes from `_threat_level`). If all three pass, `deliver_sms()` renders the alert text — species, confidence, GPS or "no fix", device, no event ID — and sends it as one TextBee batch to every active user with `sms_alerts_enabled` and a phone number; the row links back to the detection through `sighting_id = WG-<id>`. `sms_sent`/`sms_error` are stored accordingly, and failures never abort the ingest. Detection alerts do **not** use `log_skipped`, so accounts without a number add no row (they get the in-app notification); otherwise every passing detection would flood their history.
 5. Create one `Notification` per **active** user (`type="threat"`, `client_id="ws-<id>"`, alert level from confidence). Failures here roll back only the notification block — the detection is already saved.
 6. Broadcast `new_detection` to every connected dashboard.
 
@@ -720,7 +714,8 @@ The same scale is implemented in `backend/app/routes.py::_threat_level` and `fro
 ### Manual SMS broadcast (`POST /sms/send`)
 
 - Recipients = the selected `recipient_ids`, or all active users with `sms_alerts_enabled` when none are given.
-- One TextBee request carries every recipient; one `SmsLog` per recipient records status (`sent` / `failed` / `simulated` / `no_phone`), `trigger_type`, sector (payload or the recipient's location), optional `sighting_id` and the sending account in `sent_by`.
+- One TextBee request carries every recipient; one `SmsLog` per recipient records status (`sent` / `failed` / `simulated` / `no_phone`), `trigger_type`, sector (payload or the recipient's location), optional `sighting_id`, the sending account in `sent_by` and the addressee in `recipient_id`.
+- Recipients with no number are rejected (400) unless there is at least one number to text; use SOS when an account without a phone must still be accounted for.
 - A `SystemLog` entry records the broadcast, with the provider error appended when TextBee refused it.
 - In the dashboard, recipients come from `GET /users/all`; users without a phone are visibly disabled and cannot be selected.
 
@@ -728,7 +723,7 @@ The same scale is implemented in `backend/app/routes.py::_threat_level` and `fro
 
 - Recipients = **every active user**; SMS opt-in and role filters are ignored deliberately (safety broadcast).
 - Each recipient gets a `Notification` (`type="emergency_sos"`, `alert_level="CRITICAL"`, `client_id="sos-<event_id>"`).
-- Each recipient **with a phone number** also gets an `SmsLog` row (`trigger_type="emergency_sos"`) and is included in the TextBee batch.
+- Each recipient **with a phone number** also gets an `SmsLog` row (`trigger_type="emergency_sos"`) and is included in the TextBee batch; recipients without one get a row with status `no_phone` (`log_skipped=True`), so nothing disappears from the history.
 - A `SystemLog` entry records the broadcast and location.
 - A single `emergency_sos` WebSocket broadcast informs live dashboards; the client's own notification insert de-duplicates via `client_id`.
 
@@ -767,14 +762,11 @@ When the three `VITE_ROBOFLOW_*` values are present, `useRoboflowStream` opens a
 
 ---
 
-## Password reset email (Brevo)
+## Password reset flow
 
-1. Create a free Brevo account (<https://www.brevo.com>, 300 emails/day).
-2. **Settings → Senders, Domains, IPs → Senders → Add a sender** and verify the address with the 6-digit code Brevo sends.
-3. **Settings → SMTP & API → API Keys** → create a key.
-4. Set `BREVO_API_KEY` and `EMAIL_FROM` in `backend/.env`. `EMAIL_FROM` must match the verified sender.
+No email provider is configured, so `POST /auth/forgot-password` issues an `PasswordResetToken` row and returns the single-use `reset_url` in the response. `ForgotPassword.jsx` shows it as a button that navigates straight to `/reset-password?token=…`. The token is stored hashed, expires after `RESET_TOKEN_EXPIRE_MINUTES`, and earlier unused links stay valid until then.
 
-Without those values, `is_email_configured()` is false, `POST /auth/forgot-password` still answers normally but returns `reset_url` in development so the UI can show the link. In production (`APP_ENV=production`) the link is never returned.
+Because the link travels in the API response, anyone who knows an account's email address can request a reset for it — acceptable for demos and local use, not for a public deployment. Adding a real mail provider means putting the send call back in `forgot_password()` and dropping the returned `reset_url`.
 
 ---
 
@@ -906,13 +898,13 @@ cd backend && ./venv/Scripts/python.exe -c "import app.main; print('imports OK')
 | Live Monitor shows "model cannot detect tiger/leopard" | The bundled COCO checkpoint has no such classes; set `WILDLIFE_MODEL_PATH` to a trained three-class model. |
 | First AI request takes several seconds | Expected: the model is loaded lazily on first use and cached. |
 | Camera does not start | Only allowed on `localhost` or HTTPS; grant browser camera permission; close other apps holding the camera. |
-| No reset email | `BREVO_API_KEY`/`EMAIL_FROM` missing, or the sender is not verified in Brevo. In development the API returns `reset_url` instead. |
+| Forgot-password shows no link | The email is unknown or inactive — the endpoint returns the generic message without `reset_url`. Also check `FRONTEND_URL`, since the link is built from it. |
 | SMS rows say `simulated` | `TEXTBEE_API_KEY` is empty in `backend/.env`; add the key and restart the backend. |
 | SMS rows say `failed` / `/sms/status` returns 401 | TextBee rejected the key (revoked, typo, or pasted from a masked source). Issue a new one in the TextBee dashboard. |
 | `/sms/status` shows no devices | No Android phone is registered in the TextBee app, or it has never come online. |
 | "No phone number" rows in SMS Center | The account has an empty `phone`; add it in the Control Panel. |
 | `database is locked` after killing the server on Windows | Kill the whole process tree: `taskkill //PID <pid> //T //F`. |
-| Old SQLite schema after an update | Restart once — `init_db()` adds `status`, `alert_level` and `created_by` automatically. |
+| Old SQLite schema after an update | Restart once — `init_db()` adds `status`, `alert_level`, `created_by`, `sent_by` and `recipient_id` automatically. Rows written before `recipient_id` existed can never show up as "received". |
 
 ---
 
@@ -931,19 +923,19 @@ cd backend && ./venv/Scripts/python.exe -c "import app.main; print('imports OK')
 
 ## Known limitations and housekeeping
 
-- **SMS is simulated.** No transport ships with the project; all logs read `simulated`.
-- **`SmsCenter.jsx` shadowing bug.** The file imports `sendSms` from `../api` but declares a local `const sendSms` further down; the local declaration wins, and its call site invokes itself recursively. Sending an SMS from the center therefore throws a stack overflow instead of POSTing to `/sms/send`. The imported helper is flagged as unused by `oxlint` because of this.
+- **SMS needs TextBee.** Without `TEXTBEE_API_KEY`, broadcasts are recorded as `simulated` and never leave the server; with a key, delivery still depends on the registered Android phone being online (`sent` only means TextBee accepted the batch). Numbers must be in international format — a local number without a country code is normalised as-is and will not deliver.
+- **Delivery state is TextBee's.** The dashboard shows the queue status from the send call, not the carrier's delivery report; check the TextBee console for final delivery.
 - **`draw_boxes: true` duplicates detections** in `ai/detector.py`: boxes are appended once in the main loop and again inside the drawing branch, so `detections` repeats each box (while `counts` is computed before the second pass). Keep `draw_boxes` off, or fix the second loop to mutate instead of append.
 - **Bundled checkpoint limitation** — COCO classes only; tiger/leopard are absent.
 - **Unused modules:** `frontend/src/types.js`, `components/CameraFeed.jsx`, `components/NotificationPanel.jsx` are not imported anywhere; `api.js::fetchDetection`, `api.js::updateDetection`, and a handful of `utils/*` exports have no callers; `backend/app/auth.py::get_optional_user` is never used.
-- **Unused declarations:** `oxlint` reports 11 warnings — unused icons `Bell`, `ChevronDown`, `Clock3`, `Smartphone` and the `showSettings` state in `SmsCenter.jsx`; an unused `loading` state in `AdminPanel.jsx`; an unused `Feature` in `AuthLayout.jsx`; an unused `currentUser` prop in `LiveMonitor.jsx`; an unused `catch (error)` binding in `HomePage.jsx`.
+- **Unused declarations:** `oxlint` reports 10 warnings (0 errors) — unused icons `Bell`, `ChevronDown`, `Clock3`, `Smartphone` and the `showSettings`/`setShowSettings` state in `SmsCenter.jsx`; an unused `loading` state in `AdminPanel.jsx`; an unused `Feature` in `AuthLayout.jsx`; an unused `currentUser` prop in `LiveMonitor.jsx`; an unused `catch (error)` binding in `HomePage.jsx`.
 - **Committed artifacts:** 20 `.pyc` files under `backend/app/**/__pycache__/` are tracked in git; `backend/.gitignore` only ignores `venv` and `venv311`.
 - **Duplicate dependency root:** the repository-root `package.json` + `node_modules` exist only for `@roboflow/inference-sdk`, which `frontend/package.json` already declares.
-- `backend/app/README.md` predates the removal of Twilio and describes endpoints without the auth/notification layers — prefer this document and `/docs`.
+- `backend/app/README.md` predates the switch to TextBee and describes endpoints without the auth/notification layers — prefer this document and `/docs`.
 - The default database file `backend/wildguard.db` is committed; delete it to start from a clean seed.
 
 ---
 
 ## License and credits
 
-Academic / project work — add an explicit license before distributing. Built with FastAPI, SQLAlchemy, Ultralytics YOLO, React, Vite and Tailwind CSS; optional hosted inference via Roboflow; transactional email via Brevo.
+Academic / project work — add an explicit license before distributing. Built with FastAPI, SQLAlchemy, Ultralytics YOLO, React, Vite and Tailwind CSS; optional hosted inference via Roboflow.

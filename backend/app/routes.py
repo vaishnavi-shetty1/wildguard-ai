@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update, delete
+from sqlalchemy import select, func, update, delete, or_
 
 from .database import (
     Detection, User, SmsLog, SmsConfig, SystemLog, Notification, PasswordResetToken, get_db,
@@ -25,7 +25,6 @@ from .schemas import (
 )
 from .notifications import build_alert_message, deliver_sms
 from .sms_sender import gateway_status, is_sms_configured
-from .emailer import send_password_reset_email, is_email_configured
 from .websocket_manager import manager
 from .auth import (
     hash_password, verify_password, create_access_token,
@@ -501,13 +500,14 @@ def _as_utc(value: datetime) -> datetime:
 @auth_router.post(
     "/forgot-password",
     response_model=PasswordResetResponse,
-    summary="Email a password reset link",
+    summary="Issue a password reset link",
 )
 async def forgot_password(
     payload: PasswordResetRequest,
     db: AsyncSession = Depends(get_db),
 ) -> PasswordResetResponse:
-    """Always answers the same way so the endpoint can't be used to probe for accounts."""
+    """Issue a reset token. Unknown addresses get a generic 200; known ones
+    also get the link back, since no mail provider is configured."""
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
@@ -518,8 +518,8 @@ async def forgot_password(
         )
 
     # Earlier unused links stay valid until they expire. Deleting them here
-    # meant asking for a second link silently killed the email already in the
-    # inbox, so users saw "invalid or has expired" for a link that looked new.
+    # meant asking for a second link silently killed the one already handed
+    # out, so users saw "invalid or has expired" for a link that looked new.
     token = secrets.token_urlsafe(32)
     db.add(
         PasswordResetToken(
@@ -531,30 +531,19 @@ async def forgot_password(
     await db.commit()
 
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
-    logger.warning("DEBUG-RESET-LINK %s", reset_url)  # temporary diagnostic
-    delivered = await send_password_reset_email(
-        user.email, user.username, reset_url, RESET_TOKEN_EXPIRE_MINUTES
-    )
 
     await _log_system_event(
         db,
         user.username,
         "Password Reset Requested",
-        f"Reset link emailed to {user.email}" if delivered else f"Reset email not sent to {user.email} (email not configured)",
+        f"Reset link issued for {user.email}",
     )
 
-    if delivered:
-        return PasswordResetResponse(
-            status="ok",
-            message="If an account exists for that address, a reset link is on its way.",
-        )
-
-    message = "If an account exists for that address, a reset link is on its way."
-    shown_url = None
-    if not is_email_configured() and os.getenv("APP_ENV", "development") != "production":
-        message = "Email delivery isn't configured yet, so here is your reset link."
-        shown_url = reset_url
-    return PasswordResetResponse(status="ok", message=message, reset_url=shown_url)
+    return PasswordResetResponse(
+        status="ok",
+        message="Email delivery isn't configured, so here is your reset link.",
+        reset_url=reset_url,
+    )
 
 
 @auth_router.post(
@@ -854,9 +843,15 @@ async def list_sms_logs(
     current_user: User = Depends(get_current_user),
 ) -> list[SmsLogOut]:
     stmt = select(SmsLog).order_by(SmsLog.timestamp.desc())
-    # Admins audit every message; everyone else only sees what they sent.
+    # Admins audit every message; everyone else sees what they sent plus what
+    # was addressed to them, so their inbox shows up in the same history.
     if current_user.role != "admin":
-        stmt = stmt.where(SmsLog.sent_by == current_user.username)
+        stmt = stmt.where(
+            or_(
+                SmsLog.sent_by == current_user.username,
+                SmsLog.recipient_id == current_user.id,
+            )
+        )
     if status_filter:
         stmt = stmt.where(SmsLog.status == status_filter)
     if trigger:

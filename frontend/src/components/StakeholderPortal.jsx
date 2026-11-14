@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   MapPin,
   MessageSquare,
-  Phone,
   Radio,
   Shield,
   Siren,
@@ -16,9 +15,6 @@ import { formatDate } from "../utils/datetime";
 
 const StakeholderPortal = ({ currentUser, onNotification }) => {
   const [sosSent, setSosSent] = useState(false);
-  const [selectedSector, setSelectedSector] = useState(
-    currentUser?.locationName || "Your Assigned Sector"
-  );
   const [message, setMessage] = useState("");
   const [messageSent, setMessageSent] = useState(false);
 
@@ -258,7 +254,7 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
         </div>
 
         {/* Main Content */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_.6fr]">
+        <div className="grid grid-cols-1 gap-6">
 
           {/* Alerts */}
           <section className="rounded-2xl border border-slate-800 bg-slate-950/70">
@@ -354,89 +350,6 @@ const StakeholderPortal = ({ currentUser, onNotification }) => {
               ))}
             </div>
           </section>
-
-          {/* Right Panel */}
-          <div className="space-y-6">
-
-            {/* Location */}
-            <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-emerald-400" />
-                <h2 className="font-semibold text-white">Monitoring area</h2>
-              </div>
-
-              <label className="mb-2 block text-[13px] text-slate-400">
-                Watching
-              </label>
-
-              <select
-                value={selectedSector}
-                onChange={(e) => setSelectedSector(e.target.value)}
-                className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-3 text-sm text-slate-200 outline-none focus:border-emerald-500/50"
-              >
-                <option value={locationName}>{locationName}</option>
-                <option value="Sector A4 - Silverwood Hamlet">
-                  Sector A4 - Silverwood Hamlet
-                </option>
-                <option value="Sector B3 - Green Valley Orchards">
-                  Sector B3 - Green Valley Orchards
-                </option>
-                <option value="Sector C2 - Eastern Forest Boundary">
-                  Sector C2 - Eastern Forest Boundary
-                </option>
-              </select>
-
-              <div className="mt-4 rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-4">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                  <span className="text-sm font-medium text-emerald-300">
-                    Alerts are on
-                  </span>
-                </div>
-
-                <p className="mt-2 text-xs leading-5 text-slate-500">
-                  Wildlife detection alerts for this location will be sent to
-                  your registered account.
-                </p>
-              </div>
-            </section>
-
-            {/* Contact Response Team */}
-            <section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <Phone className="h-5 w-5 text-emerald-400" />
-                <h2 className="font-semibold text-white">Response team</h2>
-              </div>
-
-              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-200">
-                      Wildlife Response Unit
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      Available 24/7
-                    </p>
-                  </div>
-
-                  <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    Online
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
-                >
-                  <Phone className="h-3.5 w-3.5" />
-                  Call the response team
-                </button>
-              </div>
-            </section>
-
-          </div>
         </div>
 
         {/* Message Section */}

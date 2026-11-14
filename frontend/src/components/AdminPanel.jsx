@@ -1,45 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {Activity,AlertTriangle,CheckCircle2,Edit3,Lock,MessageSquare,Plus,Search,Shield,Trash2,UserCheck,UserCog,UserX,Users,X,} from "lucide-react";
-import { fetchUsers, updateUser, createUser, deleteUser as apiDeleteUser, mapBackendUser, fetchSystemLogs, mapSystemLog, fetchSmsStatus } from "../api";
-
-const initialLogs = [
-  {
-    id: "LOG-001",
-    timestamp: "2026-08-16 09:42:18",
-    user: "admin",
-    ip: "192.168.1.10",
-    action: "User Login",
-    details: "Administrator signed into the control panel",
-    isSuspicious: false,
-  },
-  {
-    id: "LOG-002",
-    timestamp: "2026-08-16 09:35:44",
-    user: "ranger01",
-    ip: "192.168.1.24",
-    action: "Sighting Updated",
-    details: "Tiger sighting WG-2488 marked as active",
-    isSuspicious: false,
-  },
-  {
-    id: "LOG-003",
-    timestamp: "2026-08-16 08:51:22",
-    user: "unknown",
-    ip: "45.122.18.77",
-    action: "Failed Login",
-    details: "Multiple invalid authentication attempts",
-    isSuspicious: true,
-  },
-  {
-    id: "LOG-004",
-    timestamp: "2026-08-16 08:12:05",
-    user: "operator02",
-    ip: "192.168.1.31",
-    action: "SMS Broadcast",
-    details: "Manual alert broadcast initiated",
-    isSuspicious: false,
-  },
-];
+import {AlertTriangle,Edit3,Lock,MessageSquare,Plus,Search,Shield,Trash2,UserCheck,UserCog,UserX,Users,X,} from "lucide-react";
+import { fetchUsers, updateUser, createUser, deleteUser as apiDeleteUser, mapBackendUser, fetchSmsStatus, getSmsConfig } from "../api";
 
 const AdminPanel = ({ currentUser, onNotification }) => {
   const canManageUsers = currentUser?.role === "admin";
@@ -51,7 +12,6 @@ const AdminPanel = ({ currentUser, onNotification }) => {
       String(user.createdBy) === String(currentUser.id));
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [logs, setLogs] = useState(initialLogs);
   const [activeSection, setActiveSection] = useState("users");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -60,9 +20,21 @@ const AdminPanel = ({ currentUser, onNotification }) => {
 
   // Real TextBee gateway state — the alert toggles below are still local UI.
   const [smsStatus, setSmsStatus] = useState(null);
+  const [smsConfigured, setSmsConfigured] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+
+    // The config endpoint answers from the environment alone, so it stays
+    // reliable when the TextBee device ping is slow or fails.
+    getSmsConfig()
+      .then((config) => {
+        if (!cancelled) setSmsConfigured(Boolean(config?.sms_configured));
+      })
+      .catch((error) => {
+        console.warn("Could not read the SMS config:", error);
+      });
+
     fetchSmsStatus()
       .then((status) => {
         if (!cancelled) setSmsStatus(status);
@@ -70,10 +42,15 @@ const AdminPanel = ({ currentUser, onNotification }) => {
       .catch((error) => {
         console.warn("Could not read the TextBee gateway status:", error);
       });
+
     return () => { cancelled = true; };
   }, []);
 
-  const smsConnected = Boolean(smsStatus?.configured) && !smsStatus?.error;
+  const smsConnected = Boolean(smsConfigured || smsStatus?.configured);
+  const gatewayDevice =
+    (smsStatus?.devices || []).find((device) => device.online) ||
+    (smsStatus?.devices || [])[0] ||
+    null;
 
   useEffect(() => {
     let cancelled = false;
@@ -97,22 +74,6 @@ const AdminPanel = ({ currentUser, onNotification }) => {
       });
     return () => { cancelled = true; };
   }, [onNotification]);
-
-  //load system activity logs from backend
-  useEffect(() => {
-    let cancelled = false;
-    fetchSystemLogs(200)
-      .then((records) => {
-        if (cancelled) return;
-        if (records && records.length > 0) {
-          setLogs(records.map(mapSystemLog));
-        }
-      })
-      .catch((error) => {
-        console.warn("Could not load system logs from backend:", error);
-      });
-    return () => { cancelled = true; };
-  }, []);
 
   const [smsConfig, setSmsConfig] = useState({
     autoAlertEnabled: true,
@@ -148,9 +109,8 @@ const AdminPanel = ({ currentUser, onNotification }) => {
       active: users.filter((u) => u.isActive).length,
       operators: users.filter((u) => u.role === "operator").length,
       stakeholders: users.filter( (u) => u.role === "landowner" || u.role === "village_head").length,
-      suspicious: logs.filter((log) => log.isSuspicious).length,
     };
-  }, [users, logs]);
+  }, [users]);
 
   const resetForm = () => {
     setFormData({
@@ -264,23 +224,21 @@ const AdminPanel = ({ currentUser, onNotification }) => {
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            People, activity, text settings, and security in one place.
+            People, text settings, and security in one place.
           </p>
         </div>
 
         {/* Statistics */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard icon={Users} label="People" value={statistics.total}/>
           <StatCard icon={UserCheck} label="Active accounts" value={statistics.active}/>
           <StatCard icon={UserCog} label="Operators" value={statistics.operators}/>
           <StatCard icon={Shield} label="Stakeholders" value={statistics.stakeholders}/>
-          <StatCard icon={AlertTriangle} label="Security events" value={statistics.suspicious} danger/>
         </div>
 
         {/* Navigation */}
         <div className="flex overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/70 p-1">
           <AdminTab active={activeSection === "users"} onClick={() => setActiveSection("users")} icon={Users} label="People"/>
-          <AdminTab active={activeSection === "logs"} onClick={() => setActiveSection("logs")} icon={Activity} label="Activity log"/>
           <AdminTab active={activeSection === "sms"} onClick={() => setActiveSection("sms")} icon={MessageSquare} label="SMS settings"/>
           <AdminTab active={activeSection === "security"} onClick={() => setActiveSection("security")} icon={Lock} label="Security"/>
         </div>
@@ -449,72 +407,6 @@ const AdminPanel = ({ currentUser, onNotification }) => {
           </section>
         )}
 
-        {/* SYSTEM LOGS */}
-        {activeSection === "logs" && (
-          <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70">
-            <div className="border-b border-slate-800 p-5">
-              <h2 className="font-semibold text-white">
-                System Activity Logs
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Audit trail of user and system activity.
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-225">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-900/50 text-left text-[13px] text-slate-500">
-                    <th className="px-5 py-3">Timestamp</th>
-                    <th className="px-5 py-3">User</th>
-                    <th className="px-5 py-3">IP Address</th>
-                    <th className="px-5 py-3">Action</th>
-                    <th className="px-5 py-3">Details</th>
-                    <th className="px-5 py-3">Status</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {logs.map((log) => (
-                    <tr key={log.id} className="border-b border-slate-900">
-                      <td className="px-5 py-4 font-mono text-xs text-slate-500">
-                        {log.timestamp}
-                      </td>
-                      <td className="px-5 py-4 text-sm font-semibold text-slate-300">
-                        {log.user}
-                      </td>
-                      <td className="px-5 py-4 font-mono text-xs text-slate-500">
-                        {log.ip}
-                      </td>
-                      <td className="px-5 py-4 text-xs font-semibold text-slate-300">
-                        {log.action}
-                      </td>
-                      <td className="max-w-sm px-5 py-4 text-xs text-slate-500">
-                        {log.details}
-                      </td>
-                      <td className="px-5 py-4">
-                        {log.isSuspicious ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-[13px] font-semibold text-red-400">
-                            <AlertTriangle className="h-3 w-3" />
-                            Suspicious
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[13px] font-semibold text-emerald-400">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Normal
-                          </span>
-                        )}
-                      </td>
-
-                    </tr>
-                  ))}
-                </tbody>
-
-              </table>
-            </div>
-          </section>
-        )}
-
         {/* SMS CONFIGURATION */}
         {activeSection === "sms" && (
           <section className="rounded-2xl border border-slate-800 bg-slate-950/70">
@@ -575,9 +467,11 @@ const AdminPanel = ({ currentUser, onNotification }) => {
                     </span>
                   </div>
                   <p className="mt-4 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-500">
-                    {smsStatus?.error || (smsConnected
-                      ? "TextBee is sending through your registered phone."
-                      : "Set TEXTBEE_API_KEY in backend/.env to enable delivery.")}
+                    {smsConnected
+                      ? gatewayDevice
+                        ? `TextBee is connected and sending through ${gatewayDevice.name || gatewayDevice.id || "your phone"}${gatewayDevice.online ? "." : " (phone offline — messages queue until it reconnects)."}`
+                        : "TextBee is connected; register a phone on the account to start sending."
+                      : smsStatus?.error || "Set TEXTBEE_API_KEY in backend/.env to enable delivery."}
                   </p>
                 </div>
               </div>

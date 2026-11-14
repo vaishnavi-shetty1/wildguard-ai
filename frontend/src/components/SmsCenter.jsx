@@ -287,27 +287,34 @@ const SmsCenter = ({ currentUser, onNotification }) => {
     };
   }, []);
 
-  const gatewaySummary = useMemo(() => {
-    if (!smsConfig.smsConfigured) {
-      return "TextBee is not connected. Set TEXTBEE_API_KEY in backend/.env and messages are only recorded here.";
-    }
+  // The config endpoint reads the API key straight from the environment, so it
+  // stays correct even when the device ping is slow or the phone is asleep.
+  const gatewayConfigured = Boolean(
+    smsConfig.smsConfigured || smsStatus?.configured
+  );
 
-    if (smsStatus?.error) {
-      return `TextBee refused the request: ${smsStatus.error}`;
+  const gatewaySummary = useMemo(() => {
+    if (!gatewayConfigured) {
+      return "TextBee is not connected. Set TEXTBEE_API_KEY in backend/.env and messages are only recorded here.";
     }
 
     const devices = smsStatus?.devices || [];
 
     if (devices.length === 0) {
-      return "The API key works, but no phone is registered on the TextBee account yet.";
+      return smsStatus?.error
+        ? `TextBee is connected, but the device list could not be read: ${smsStatus.error}`
+        : "TextBee is connected, but no phone is registered on the account yet.";
     }
 
     const device =
       devices.find((item) => item.online) || devices[0];
+    const name = device.name || device.id || "your phone";
 
-    return `TextBee is connected — texts go out through ${device.name || device.id || "your phone"}.`;
+    return device.online
+      ? `TextBee is connected — texts go out through ${name}.`
+      : `TextBee is connected through ${name}, which is offline right now, so messages wait in the gateway queue.`;
   }, [
-    smsConfig.smsConfigured,
+    gatewayConfigured,
     smsStatus,
   ]);
 
@@ -1441,6 +1448,15 @@ const SmsCenter = ({ currentUser, onNotification }) => {
                           </p>
                         ) : null}
 
+                        {!isAdmin &&
+                        currentUser &&
+                        log.recipientId === currentUser.id &&
+                        log.sentBy !== currentUser.username ? (
+                          <p className="mt-1 text-[10px] uppercase tracking-wide text-emerald-700">
+                            received{log.sentBy ? ` from ${log.sentBy}` : ""}
+                          </p>
+                        ) : null}
+
                       </td>
 
 
@@ -1736,7 +1752,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                   <div
                     className={`grid size-9 place-items-center rounded-lg ${
-                      smsConfig.smsConfigured
+                      gatewayConfigured
                         ? "bg-emerald-500/10 text-emerald-400"
                         : "bg-amber-500/10 text-amber-400"
                     }`}
@@ -1763,7 +1779,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <span
                   className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
-                    smsConfig.smsConfigured
+                    gatewayConfigured
                       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                       : "border-amber-500/20 bg-amber-500/10 text-amber-400"
                   }`}
@@ -1771,9 +1787,9 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                   <span className="size-1.5 rounded-full bg-current" />
 
-                  {smsConfig.smsConfigured
+                  {gatewayConfigured
                     ? "Connected"
-                    : "Simulated"}
+                    : "Not connected"}
 
                 </span>
 

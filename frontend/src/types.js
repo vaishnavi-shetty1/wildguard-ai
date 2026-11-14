@@ -114,8 +114,6 @@ export const DEFAULT_SMS_CONFIG = {
   ],
 
   defaultSenderName: "WILDGUARD",
-
-//   twilioConfigured: false,
 };
 
 //system log
