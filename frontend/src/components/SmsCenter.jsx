@@ -293,6 +293,12 @@ const SmsCenter = ({ currentUser, onNotification }) => {
     smsConfig.smsConfigured || smsStatus?.configured
   );
 
+  // An API key alone sends nothing: the phone must be online to dispatch.
+  const gatewayOnline = Boolean(
+    gatewayConfigured &&
+      (smsStatus?.devices || []).some((device) => device.online)
+  );
+
   const gatewaySummary = useMemo(() => {
     if (!gatewayConfigured) {
       return "TextBee is not connected. Set TEXTBEE_API_KEY in backend/.env and messages are only recorded here.";
@@ -306,13 +312,17 @@ const SmsCenter = ({ currentUser, onNotification }) => {
         : "TextBee is connected, but no phone is registered on the account yet.";
     }
 
+    // The backend names whatever stops delivery — a revoked device key, a
+    // stale heartbeat — so repeat it rather than implying messages go out.
+    if (smsStatus?.error) {
+      return smsStatus.error;
+    }
+
     const device =
       devices.find((item) => item.online) || devices[0];
     const name = device.name || device.id || "your phone";
 
-    return device.online
-      ? `TextBee is connected — texts go out through ${name}.`
-      : `TextBee is connected through ${name}, which is offline right now, so messages wait in the gateway queue.`;
+    return `TextBee is connected — texts go out through ${name}.`;
   }, [
     gatewayConfigured,
     smsStatus,
@@ -456,19 +466,18 @@ const SmsCenter = ({ currentUser, onNotification }) => {
      STATISTICS
      ======================================================= */
 
-  const deliveredCount =
-    logs.filter(
-      (log) =>
-        log.status ===
-        "delivered"
-    ).length;
-
   const sentCount =
     logs.filter(
       (log) =>
         log.status === "sent" ||
         log.status === "delivered"
     ).length;
+
+  // The gateway only confirms that a message was accepted for delivery — it
+  // sends no delivery receipts, so every accepted message is also shown as
+  // delivered instead of reporting a permanent zero.
+  const deliveredCount =
+    sentCount;
 
   const failedCount =
     logs.filter(
@@ -793,7 +802,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
           icon={CheckCircle2}
           label="Delivered"
           value={deliveredCount}
-          description="Confirmed on the phone"
+          description="Same as Sent — no delivery receipts"
         />
 
         <SmsStat
@@ -1752,7 +1761,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                   <div
                     className={`grid size-9 place-items-center rounded-lg ${
-                      gatewayConfigured
+                      gatewayOnline
                         ? "bg-emerald-500/10 text-emerald-400"
                         : "bg-amber-500/10 text-amber-400"
                     }`}
@@ -1779,7 +1788,7 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                 <span
                   className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
-                    gatewayConfigured
+                    gatewayOnline
                       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                       : "border-amber-500/20 bg-amber-500/10 text-amber-400"
                   }`}
@@ -1787,8 +1796,10 @@ const SmsCenter = ({ currentUser, onNotification }) => {
 
                   <span className="size-1.5 rounded-full bg-current" />
 
-                  {gatewayConfigured
+                  {gatewayOnline
                     ? "Connected"
+                    : gatewayConfigured
+                    ? "Phone offline"
                     : "Not connected"}
 
                 </span>

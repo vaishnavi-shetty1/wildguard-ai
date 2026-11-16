@@ -8,7 +8,7 @@
  *
  * Inference runs on the backend: each frame is captured from the local
  * video element, JPEG-encoded, and POSTed to `/api/v1/ai/predict`, where
- * the bundled Ultralytics model (`models/yolo11n.pt`) performs detection
+ * the bundled Ultralytics model (`models/best.pt`) performs detection
  * and returns species + confidence + bounding boxes.
  *
  * The output contract below is unchanged from the old demo model, so all
@@ -200,25 +200,40 @@ export const mapPredictResponse = (response) => {
 };
 
 /**
- * Run real inference on the current frame of the supplied video element.
- * Returns the prediction contract, or null when the frame is unusable,
- * the backend is unreachable, or no wildlife was detected.
+ * Run backend inference on the current frame. Resolves to the prediction
+ * contract, or null when the frame is unusable or nothing was detected.
+ * Throws when the backend itself could not be reached, so callers can
+ * distinguish "no animal in frame" from "inference unavailable".
  */
-export const runDetection = async (videoElement) => {
+const detectWithBackend = async (videoElement) => {
   const image = captureFrame(videoElement);
   if (!image) {
     return null;
   }
 
-  let response;
+  /*
+   * Scan at the checkpoint's own operating point (the backend default of
+   * 0.25). Sending 0.4 here added a second, invisible gate on top of NMS:
+   * real detections that the backend had already accepted (e.g. an elephant
+   * scoring 0.38 on a soft webcam frame) were silently discarded, which is
+   * indistinguishable from the animal not being there.
+   */
+  const response = await predictImage({ image, confidence_threshold: 0.25 });
+  return mapPredictResponse(response);
+};
+
+/**
+ * Run real inference on the current frame of the supplied video element.
+ * Returns the prediction contract, or null when the frame is unusable,
+ * the backend is unreachable, or no wildlife was detected.
+ */
+export const runDetection = async (videoElement) => {
   try {
-    response = await predictImage({ image, confidence_threshold: 0.4 });
+    return await detectWithBackend(videoElement);
   } catch (error) {
     console.warn("[WildGuard] Inference backend unreachable:", error?.message);
     return null;
   }
-
-  return mapPredictResponse(response);
 };
 
 export const runTeachableDetection = async (videoElement) => {
@@ -267,17 +282,38 @@ export const runTeachableDetection = async (videoElement) => {
  *
  * Predicts the species visible in the supplied video element using the
  * backend YOLO model. Returns null when nothing is detected.
+ *
+ * The backend model is authoritative and can report an empty frame, so a
+ * scan with no animal returns null. Teachable Machine is NOT used as a
+ * fallback and is opt-in only: its checkpoint has no "background" class,
+ * so it always picks one of its species labels for any frame it is given.
  */
-export const predictWildlife = async (videoElement, useTeachable = true) => {
+export const predictWildlife = async (videoElement, useTeachable = false) => {
   if (!videoElement) {
     return null;
   }
-  if (useTeachable) {
-    const tm = await runTeachableDetection(videoElement);
-    if (tm) return tm;
-    // fallback to backend if TM fails
+
+  try {
+    return await detectWithBackend(videoElement);
+  } catch (error) {
+    // No detection rather than a guessed species: an unreachable backend
+    // must not turn into an alert about an animal that is not there.
+    console.warn(
+      "[WildGuard] Inference backend unavailable, no detection this scan:",
+      error?.message
+    );
+
+    /*
+     * Rethrow unless a fallback can take over. Swallowing the error here made
+     * a failing scan look exactly like an empty frame, so the dashboard showed
+     * "nothing in frame yet" while every request was erroring out.
+     */
+    if (!useTeachable) {
+      throw error;
+    }
   }
-  return runDetection(videoElement);
+
+  return runTeachableDetection(videoElement);
 };
 
 /**

@@ -45,15 +45,71 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", "30"))
 
 
+# How dangerous a confirmed sighting is. Driven by WHAT was seen, because the
+# alert gate below defaults to HIGH/CRITICAL: scoring severity purely off
+# confidence meant every real elephant/leopard/tiger between 0.25 and 0.85 was
+# filed as MEDIUM/LOW and skipped before any SMS was attempted, and no code
+# path could ever produce CRITICAL.
+SPECIES_SEVERITY = {
+    "tiger": "CRITICAL",
+    "elephant": "HIGH",
+    "leopard": "HIGH",
+}
+
+
 def _threat_level(species: str, confidence: float) -> str:
-    """Same scale the dashboard uses so alert levels stay consistent."""
-    if species in {"unknown", "no threat"}:
+    """Threat level for an alert: species severity, confidence as fallback."""
+    key = (species or "").strip().lower()
+    if key in {"", "unknown", "no threat"}:
         return "LOW"
+    if key in SPECIES_SEVERITY:
+        return SPECIES_SEVERITY[key]
+    # Classes outside the target list keep the dashboard's confidence scale.
     if confidence >= 0.85:
         return "HIGH"
     if confidence >= 0.6:
         return "MEDIUM"
     return "LOW"
+
+
+# Repeated detections of the same animal arrive seconds apart (the Live Monitor
+# scans every ~3s), and every automatic alert costs one SMS per registered
+# user. Without a cooldown a single elephant in frame drained a 50-message
+# plan in under a minute, after which every alert failed with HTTP 429 and no
+# one received anything. Set ALERT_COOLDOWN_MINUTES=0 to disable.
+ALERT_COOLDOWN_MINUTES = int(os.getenv("ALERT_COOLDOWN_MINUTES", "10"))
+
+# Only confident sightings are worth waking someone for: below 70% the model
+# is guessing between species, and an SMS costs a message from a small plan.
+MIN_ALERT_CONFIDENCE = float(os.getenv("MIN_ALERT_CONFIDENCE", "0.70"))
+
+
+async def _alert_on_cooldown(
+    db: AsyncSession, detection: Detection, detected_at: datetime
+) -> bool:
+    """True when this species already alerted from this device recently."""
+    if ALERT_COOLDOWN_MINUTES <= 0:
+        return False
+
+    result = await db.execute(
+        select(Detection.detected_at)
+        .where(
+            Detection.id != detection.id,
+            Detection.species == detection.species,
+            Detection.device_id == detection.device_id,
+            Detection.sms_sent == True,  # noqa: E712
+        )
+        .order_by(Detection.detected_at.desc())
+        .limit(1)
+    )
+    last = result.scalar_one_or_none()
+    if last is None:
+        return False
+
+    # SQLite can hand back a naive value; treat it as UTC.
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return (detected_at - last) < timedelta(minutes=ALERT_COOLDOWN_MINUTES)
 
 
 def _parse_json(value: Optional[str], default: list) -> list:
@@ -71,11 +127,15 @@ async def _verify_key(
     x_api_key: Optional[str] = Header(None),
     authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> Optional[User]:
     """
     Shared-secret auth for requests from devices (X-Api-Key) OR the dashboard
     (Bearer JWT). Set API_SECRET_KEY in .env — device clients send it as the
     X-Api-Key header; the React dashboard sends a normal dashboard JWT.
+
+    Returns the authenticated dashboard user, or None for a device using the
+    shared secret (a device has no account of its own). Callers that deliver
+    SMS use this to address the alert to the person who actually triggered it.
     """
     expected = os.getenv("API_SECRET_KEY", "change_me")
     if x_api_key and x_api_key == expected:
@@ -94,7 +154,7 @@ async def _verify_key(
             result = await db.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
             if user and user.is_active:
-                return None
+                return user
 
     raise HTTPException(status_code=401, detail="Invalid API key or authentication token")
 
@@ -110,7 +170,7 @@ async def _verify_key(
 async def create_detection(
     payload: DetectionCreate,
     db: AsyncSession = Depends(get_db),
-    _: None = Depends(_verify_key),
+    current_user: Optional[User] = Depends(_verify_key),
 ) -> DetectionAck:
     detected_at = payload.detected_at or datetime.now(timezone.utc)
 
@@ -128,8 +188,10 @@ async def create_detection(
     await db.commit()
     await db.refresh(detection)
 
-    # Send SMS alerts to every enabled stakeholder with a number on file,
-    # honouring the auto-alert settings saved in the SMS center.
+    # Send an SMS alert, honouring the auto-alert settings saved in the SMS
+    # center. A live-monitor scan belongs to the signed-in operator, so it is
+    # sent to that user alone; a device event (shared API key) has no owner and
+    # still goes to every enabled stakeholder with a number on file.
     sms_ok, sms_err = False, None
     try:
         config = await _get_or_create_sms_config(db)
@@ -143,31 +205,64 @@ async def create_detection(
             logger.info("Auto SMS alerts are off - detection #%d not broadcast", detection.id)
         elif detection.species not in wanted_species:
             logger.info("Species %s is not on the SMS alert list - skipped", detection.species)
+        elif detection.confidence < MIN_ALERT_CONFIDENCE:
+            logger.info(
+                "Detection #%d confidence %.3f is under the %.2f SMS threshold - skipped",
+                detection.id,
+                detection.confidence,
+                MIN_ALERT_CONFIDENCE,
+            )
         elif alert_level not in wanted_levels:
             logger.info("Alert level %s is below the SMS alert levels - skipped", alert_level)
+        elif await _alert_on_cooldown(db, detection, detected_at):
+            logger.info(
+                "Recent %s alert already sent for %s - inside the %d min cooldown",
+                detection.species,
+                detection.device_id,
+                ALERT_COOLDOWN_MINUTES,
+            )
         else:
-            result = await db.execute(
-                select(User).where(
-                    User.is_active == True,  # noqa: E712
-                    User.sms_alerts_enabled == True,  # noqa: E712
+            if current_user is not None:
+                # Live-monitor detection: the operator watching the feed.
+                recipients = [current_user] if current_user.sms_alerts_enabled else []
+                if not recipients:
+                    logger.info(
+                        "User %s has SMS alerts turned off - detection #%d not sent",
+                        current_user.username,
+                        detection.id,
+                    )
+            else:
+                result = await db.execute(
+                    select(User).where(
+                        User.is_active == True,  # noqa: E712
+                        User.sms_alerts_enabled == True,  # noqa: E712
+                    )
                 )
-            )
-            sms_ok, sms_err, _logs = await deliver_sms(
-                db,
-                result.scalars().all(),
-                build_alert_message(
-                    detection.species,
-                    detection.confidence,
-                    detection.latitude,
-                    detection.longitude,
-                    detection.gps_fix,
-                    detection.device_id,
-                ),
-                trigger_type="auto_detection",
-                sector=detection.device_id,
-                sighting_id=f"WG-{detection.id}",
-                sent_by="system",
-            )
+                recipients = list(result.scalars().all())
+
+            if recipients and not any((r.phone or "").strip() for r in recipients):
+                logger.info(
+                    "No phone number on file for the alert recipient(s) of detection #%d",
+                    detection.id,
+                )
+
+            if recipients:
+                sms_ok, sms_err, _logs = await deliver_sms(
+                    db,
+                    recipients,
+                    build_alert_message(
+                        detection.species,
+                        detection.confidence,
+                        detection.latitude,
+                        detection.longitude,
+                        detection.gps_fix,
+                        detection.device_id,
+                    ),
+                    trigger_type="auto_detection",
+                    sector=detection.device_id,
+                    sighting_id=f"WG-{detection.id}",
+                    sent_by=current_user.username if current_user else "system",
+                )
     except Exception:
         await db.rollback()
         sms_err = "SMS delivery failed unexpectedly"
@@ -401,8 +496,8 @@ async def ai_model_info(
     summary="Run YOLO inference on a single image",
     description=(
         "Accepts a base64 image and returns detected species, confidence, "
-        "bounding boxes, and per-species counts using the bundled YOLO "
-        "checkpoint (models/yolo11n.pt). Inference runs off the event loop."
+        "bounding boxes, and per-species counts using the bundled three-class "
+        "checkpoint (models/best.pt). Inference runs off the event loop."
     ),
 )
 async def ai_predict(

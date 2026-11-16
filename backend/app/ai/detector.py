@@ -8,11 +8,12 @@ import numpy as np
 import cv2
 from ultralytics import YOLO
 
-from backend.app.ai.species_classifier import available as species_model_available
-from backend.app.ai.species_classifier import classify_crop_bgr
+from .species_classifier import available as species_model_available
+from .species_classifier import classify_crop_bgr
 
 MODEL_DIR = Path(__file__).resolve().parent / "models"
-DEFAULT_MODEL_PATH = str(MODEL_DIR / "yolo11n.pt")
+DEFAULT_MODEL_PATH = str(MODEL_DIR / "best.pt")
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_IMGSZ = 640
 
 TARGET_SPECIES = ("elephant", "tiger", "leopard")
@@ -23,8 +24,20 @@ _model_path = None
 
 
 def _resolve_model_path() -> str:
-    path = os.getenv("WILDLIFE_MODEL_PATH") or DEFAULT_MODEL_PATH
-    return path
+    configured = (os.getenv("WILDLIFE_MODEL_PATH") or "").strip()
+    if not configured:
+        return DEFAULT_MODEL_PATH
+    path = Path(configured).expanduser()
+    if path.is_absolute():
+        return str(path)
+    # A relative WILDLIFE_MODEL_PATH is ambiguous: the server may be started from
+    # the repo root (backend.app.main:app) or from backend/ (app.main:app).
+    # Resolve against the repo root first, then the current working directory.
+    for base in (PROJECT_ROOT, Path.cwd()):
+        candidate = base / path
+        if candidate.is_file():
+            return str(candidate)
+    return str(PROJECT_ROOT / path)
 
 
 def get_model_name() -> str:
@@ -105,52 +118,30 @@ def run_detection(
 
     result = results[0] if results else None
     detections: list[dict] = []
+    height, width = image_bgr.shape[:2]
 
     if result is not None and result.boxes is not None and len(result.boxes) > 0:
         xyxy = result.boxes.xyxy.cpu().numpy()
         cls = result.boxes.cls.cpu().numpy().astype(int)
         confs = result.boxes.conf.cpu().numpy()
 
+        refine = species_model_available()
         order = confs.argsort()[::-1][:max_detections]
         for idx in order:
-            detections.append(
-                {
-                    "class_id": int(cls[idx]),
-                    "species": names[int(cls[idx])],
-                    "confidence": round(float(confs[idx]), 4),
-                    "bbox": [round(float(v), 1) for v in xyxy[idx]],
-                }
-            )
-
-    counts: dict[str, int] = {}
-    for detection in detections:
-        counts[detection["species"]] = counts.get(detection["species"], 0) + 1
-
-    height, width = image_bgr.shape[:2]
-    image_b64 = None
-    if draw and result is not None:
-        annotated = result.plot()
-        ok, buf = cv2.imencode(".jpg", annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        if ok:
-            image_b64 = base64.b64encode(buf.tobytes()).decode()
-
-        for idx in order:
             box = [round(float(v), 1) for v in xyxy[idx]]
-            x1, y1, x2, y2 = map(int, box)
-            h, w = image_bgr.shape[:2]
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(w, x2), min(h, y2)
-
-            species = names[int(cls[idx])]
+            species = str(names[int(cls[idx])]).strip().lower()
             confidence = round(float(confs[idx]), 4)
             class_id = int(cls[idx])
 
-            if species_model_available() and x2 > x1 and y2 > y1:
-                crop = image_bgr[y1:y2, x1:x2]
-                refined = classify_crop_bgr(crop)
-                species = refined["species"]
-                confidence = refined["confidence"]
-                class_id = ["elephant", "tiger", "leopard"].index(species)
+            if refine:
+                x1, y1, x2, y2 = map(int, box)
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(width, x2), min(height, y2)
+                if x2 > x1 and y2 > y1:
+                    refined = classify_crop_bgr(image_bgr[y1:y2, x1:x2])
+                    species = refined["species"]
+                    confidence = refined["confidence"]
+                    class_id = ["elephant", "tiger", "leopard"].index(species)
 
             detections.append(
                 {
@@ -160,6 +151,17 @@ def run_detection(
                     "bbox": box,
                 }
             )
+
+    counts: dict[str, int] = {}
+    for detection in detections:
+        counts[detection["species"]] = counts.get(detection["species"], 0) + 1
+
+    image_b64 = None
+    if draw and result is not None:
+        annotated = result.plot()
+        ok, buf = cv2.imencode(".jpg", annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        if ok:
+            image_b64 = base64.b64encode(buf.tobytes()).decode()
 
     return {
         "model": get_model_name(),

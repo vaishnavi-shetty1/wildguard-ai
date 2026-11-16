@@ -25,6 +25,23 @@ async function request(path, options = {}) {
     ...options,
     headers: { ...getAuthHeaders(), ...options.headers },
   });
+
+  /*
+   * A stored token that the server rejects (expired after
+   * ACCESS_TOKEN_EXPIRE_MINUTES, or signed with a different secret) was
+   * previously ignored: the dashboard kept rendering while every
+   * authenticated request failed. For live monitoring that looked like
+   * "nothing in frame", because the scan errors were swallowed. Clear the
+   * dead session so ProtectedRoute sends the user to a fresh sign-in.
+   */
+  if (res.status === 401 && !path.startsWith("/auth/login")) {
+    if (localStorage.getItem("wildguard_token")) {
+      localStorage.removeItem("wildguard_token");
+      localStorage.removeItem("wildguard_user");
+      window.location.assign("/login");
+    }
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed: ${res.status}`);

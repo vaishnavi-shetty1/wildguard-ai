@@ -55,6 +55,14 @@ const LiveMonitor = ({
     useState("");
 
   /*
+   * Why the last scan produced nothing. Without this a failed inference
+   * request looked identical to a frame with no animal in it, so the panel
+   * just said "nothing in frame yet" no matter what went wrong.
+   */
+  const [scanError, setScanError] =
+    useState("");
+
+  /*
    * Inference provider.
    *
    * "local" polls the backend YOLO checkpoint on an interval;
@@ -105,11 +113,14 @@ const LiveMonitor = ({
   const handleCloudPrediction = useCallback(
     (result) => {
       /*
-       * Empty cloud frames are ignored here so the card keeps showing
-       * the last real detection, matching local polling behaviour.
+       * An empty frame clears the card, exactly like local polling:
+       * the panel must never keep showing an animal that has left.
        */
 
-      if (!result) return;
+      if (!result) {
+        setPrediction(null);
+        return;
+      }
 
       setPrediction(result);
 
@@ -307,6 +318,7 @@ const LiveMonitor = ({
     });
 
     setIsScanning(false);
+    setPrediction(null);
   };
 
   // --------------------------------------------------
@@ -334,7 +346,13 @@ const LiveMonitor = ({
           videoRef.current
         );
 
+      // The request went through, so any earlier transport error is stale.
+      setScanError("");
+
       if (!result) {
+        // No animal in this frame: clear the previous detection so the
+        // card and bounding boxes never outlive what the model sees.
+        setPrediction(null);
         return;
       }
 
@@ -354,6 +372,11 @@ const LiveMonitor = ({
       console.error(
         "AI prediction error:",
         error
+      );
+
+      setScanError(
+        error?.message ||
+          "Inference request failed."
       );
     } finally {
       scanInFlightRef.current = false;
@@ -377,6 +400,9 @@ const LiveMonitor = ({
           null;
       }
 
+      // Scanning stopped: nothing is being verified any more.
+      setPrediction(null);
+
       return;
     }
 
@@ -385,6 +411,7 @@ const LiveMonitor = ({
     }
 
     setIsScanning(true);
+    setScanError("");
 
     /*
      * Cloud inference needs no polling: the WebRTC session started by
@@ -458,6 +485,7 @@ const LiveMonitor = ({
     }
 
     setIsScanning(false);
+    setPrediction(null);
 
     const video = videoRef.current;
     if (video && cameraState?.stream) {
@@ -726,6 +754,29 @@ const LiveMonitor = ({
             {cameraError ||
               cameraState.error}
           </p>
+
+        </div>
+      )}
+
+      {/* INFERENCE ERROR */}
+
+      {scanError && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+
+          <AlertTriangle
+            size={18}
+            className="mt-0.5 shrink-0 text-red-400"
+          />
+
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-red-300">
+              Inference failed — nothing is being scanned
+            </p>
+
+            <p className="mt-1 text-[13px] leading-4 text-red-200/70">
+              {scanError}
+            </p>
+          </div>
 
         </div>
       )}

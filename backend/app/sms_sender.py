@@ -22,6 +22,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
 import httpx
@@ -32,6 +33,11 @@ DEFAULT_BASE_URL = "https://api.textbee.dev/api/v1"
 SEND_PATH = "/gateway/send-sms"
 DEVICES_PATH = "/gateway/devices"
 REQUEST_TIMEOUT = 20.0
+
+# A phone reports a heartbeat every `heartbeatIntervalMinutes` (30 by default).
+# Allow it to miss two in a row before calling it offline.
+DEFAULT_HEARTBEAT_MINUTES = 30
+HEARTBEAT_GRACE_INTERVALS = 2
 
 
 @dataclass
@@ -120,6 +126,37 @@ def configure_numbers(numbers: Iterable[Optional[str]]) -> tuple[list[str], list
         elif normalised not in valid:
             valid.append(normalised)
     return valid, dropped
+
+
+def _parse_timestamp(value) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _device_online(device: dict) -> bool:
+    """
+    True when the phone can actually receive a send.
+
+    TextBee reports no `status` field, so recency of `lastHeartbeat` is the
+    only signal. A revoked device key means the phone can never check in again
+    until it is re-paired; `updatedAt` moves on every send and must NOT be
+    mistaken for a heartbeat.
+    """
+    if not device.get("enabled", True) or device.get("apiKeyRevoked"):
+        return False
+
+    last = _parse_timestamp(device.get("lastHeartbeat"))
+    if last is None:
+        return False
+
+    interval = device.get("heartbeatIntervalMinutes") or DEFAULT_HEARTBEAT_MINUTES
+    grace = timedelta(minutes=max(interval, 1) * HEARTBEAT_GRACE_INTERVALS)
+    return datetime.now(timezone.utc) - last <= grace
 
 
 def _find_batch_id(payload) -> Optional[str]:
@@ -261,9 +298,42 @@ async def gateway_status() -> dict:
             "id": d.get("id") or d.get("_id"),
             "name": d.get("name") or d.get("brand") or "phone",
             "enabled": bool(d.get("enabled", True)),
-            "online": str(d.get("status", "")).lower() == "online",
+            "online": _device_online(d),
+            "api_key_revoked": bool(d.get("apiKeyRevoked")),
+            "last_heartbeat": d.get("lastHeartbeat"),
         }
         for d in devices
     ]
-    status["error"] = error
+    status["error"] = error or _device_problem(devices)
     return status
+
+
+def _device_problem(devices: list[dict]) -> Optional[str]:
+    """Explain why a send would sit queued instead of going out."""
+    if not devices:
+        return (
+            "No phone is registered on this TextBee account — open the TextBee "
+            "app on the gateway phone and register the device."
+        )
+
+    device = next((d for d in devices if _device_online(d)), devices[0])
+    name = device.get("name") or device.get("brand") or "the gateway phone"
+
+    if device.get("apiKeyRevoked"):
+        return (
+            f"{name} can no longer reach TextBee: the API key it registered with "
+            "was revoked, so messages stay queued and are never sent. Reconnect "
+            "the phone in the TextBee app with a new API key (keep the same "
+            "device ID to retain its history)."
+        )
+
+    if not _device_online(device):
+        last = device.get("lastHeartbeat")
+        when = f" (last heartbeat {last})" if last else " (it has never checked in)"
+        return (
+            f"{name} is offline{when}, so messages wait at TextBee until it "
+            "reconnects. Open the TextBee app on the phone and allow it to run "
+            "in the background without battery optimization."
+        )
+
+    return None
